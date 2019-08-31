@@ -12,11 +12,16 @@ library
                , beam-migrate
                , beam-postgres
                , common
+               , gargoyle-postgresql-connect
                , frontend
                , obelisk-backend
                , obelisk-route
+               , postgresql-simple
+               , resource-pool
   exposed-modules:
     Backend
+  other-modules:
+    Backend.Schema
   ghc-options: -Wall
 
 executable backend
