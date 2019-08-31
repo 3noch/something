@@ -25,7 +25,7 @@ project ./. ({ hackGet, pkgs, ... }:
     beam-migrate = beamSrc + /beam-migrate;
   };
 
-    overrides = self: super: {
-      beam-postgres = pkgs.haskell.lib.dontCheck super.beam-postgres;  # Requires PG to run tests
-    } // import gargoyleSrc self;
+  overrides = self: super: {
+    beam-postgres = pkgs.haskell.lib.dontCheck super.beam-postgres;  # Requires PG to run tests
+  } // import gargoyleSrc self;
 } // projectOverrides)

@@ -5,14 +5,15 @@ build-type: Simple
 
 library
   hs-source-dirs: src
-  build-depends: base
-               , common
-               , obelisk-frontend
-               , obelisk-route
-               , reflex-dom
-               , obelisk-executable-config-lookup
-               , obelisk-generated-static
-               , text
+  build-depends:
+      base
+    , common
+    , obelisk-frontend
+    , obelisk-route
+    , reflex-dom
+    , obelisk-executable-config-lookup
+    , obelisk-generated-static
+    , text
   exposed-modules:
     Frontend
   ghc-options: -Wall
@@ -20,13 +21,14 @@ library
 executable frontend
   main-is: main.hs
   hs-source-dirs: src-bin
-  build-depends: base
-               , common
-               , obelisk-frontend
-               , obelisk-route
-               , reflex-dom
-               , obelisk-generated-static
-               , frontend
+  build-depends:
+      base
+    , common
+    , obelisk-frontend
+    , obelisk-route
+    , reflex-dom
+    , obelisk-generated-static
+    , frontend
   --TODO: Make these ghc-options optional
   ghc-options: -threaded
   if os(darwin)
