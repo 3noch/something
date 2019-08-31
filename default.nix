@@ -9,22 +9,23 @@
 , projectOverrides ? {}
 }:
 with obelisk;
-project ./. ({ hackGet, pkgs, ... }: {
+project ./. ({ hackGet, pkgs, ... }:
+  let
+    beamSrc = hackGet dep/beam;
+    gargoyleSrc = hackGet dep/gargoyle;
+  in {
   android.applicationId = "systems.obsidian.obelisk.examples.minimal";
   android.displayName = "Obelisk Minimal Example";
   ios.bundleIdentifier = "systems.obsidian.obelisk.examples.minimal";
   ios.bundleName = "Obelisk Minimal Example";
 
-  packages =
-    let
-      beamSrc = hackGet dep/beam;
-    in {
-      beam-core = beamSrc + /beam-core;
-      beam-postgres = beamSrc + /beam-postgres;
-      beam-migrate = beamSrc + /beam-migrate;
-    };
+  packages = {
+    beam-core = beamSrc + /beam-core;
+    beam-postgres = beamSrc + /beam-postgres;
+    beam-migrate = beamSrc + /beam-migrate;
+  };
 
     overrides = self: super: {
       beam-postgres = pkgs.haskell.lib.dontCheck super.beam-postgres;  # Requires PG to run tests
-    };
+    } // import gargoyleSrc self;
 } // projectOverrides)
