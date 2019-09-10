@@ -11,11 +11,32 @@ library
     , obelisk-frontend
     , obelisk-route
     , reflex-dom
+    , rhyolite-frontend
     , obelisk-executable-config-lookup
     , obelisk-generated-static
     , text
   exposed-modules:
     Frontend
+  default-extensions:
+    DataKinds
+    DeriveFoldable
+    DeriveGeneric
+    DeriveTraversable
+    DerivingStrategies
+    EmptyCase
+    GADTs
+    GeneralizedNewtypeDeriving
+    KindSignatures
+    LambdaCase
+    MultiParamTypeClasses
+    OverloadedStrings
+    PolyKinds
+    RankNTypes
+    ScopedTypeVariables
+    StandaloneDeriving
+    TupleSections
+    TypeApplications
+    TypeFamilies
   ghc-options: -Wall
 
 executable frontend

@@ -6,14 +6,36 @@ build-type: Simple
 library
   hs-source-dirs: src
   build-depends:
-      base
-    , obelisk-route
+      aeson
+    , aeson-gadt-th
+    , base
     , mtl
+    , obelisk-route
+    , rhyolite-common
+    , semialign
     , text
   default-extensions:
-    TypeFamilies
+    DataKinds
+    DeriveFoldable
+    DeriveGeneric
+    DeriveTraversable
+    DerivingStrategies
+    EmptyCase
+    GADTs
+    GeneralizedNewtypeDeriving
+    KindSignatures
+    LambdaCase
+    MultiParamTypeClasses
+    OverloadedStrings
     PolyKinds
+    RankNTypes
+    ScopedTypeVariables
+    StandaloneDeriving
+    TupleSections
+    TypeApplications
+    TypeFamilies
   exposed-modules:
-    Common.Api
+    Common.App
+    Common.Prelude
     Common.Route
     Common.Schema

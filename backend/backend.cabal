@@ -13,16 +13,44 @@ library
     , beam-migrate
     , beam-postgres
     , common
+    , constraints-extras
+    , exceptions
     , gargoyle-postgresql-connect
     , frontend
     , obelisk-backend
     , obelisk-route
     , postgresql-simple
     , resource-pool
+    , rhyolite-backend
+    , safe-exceptions
   exposed-modules:
     Backend
   other-modules:
+    Backend.NotifyHandler
+    Backend.RequestHandler
     Backend.Schema
+    Backend.Transaction
+    Backend.ViewSelectorHandler
+  default-extensions:
+    DataKinds
+    DeriveFoldable
+    DeriveGeneric
+    DeriveTraversable
+    DerivingStrategies
+    EmptyCase
+    GADTs
+    GeneralizedNewtypeDeriving
+    KindSignatures
+    LambdaCase
+    MultiParamTypeClasses
+    OverloadedStrings
+    PolyKinds
+    RankNTypes
+    ScopedTypeVariables
+    StandaloneDeriving
+    TupleSections
+    TypeApplications
+    TypeFamilies
   ghc-options: -Wall
 
 executable backend
