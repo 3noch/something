@@ -9,11 +9,13 @@ library
       aeson
     , aeson-gadt-th
     , base
+    , lens
     , mtl
     , obelisk-route
     , rhyolite-common
     , semialign
     , text
+    , witherable
   default-extensions:
     DataKinds
     DeriveFoldable
