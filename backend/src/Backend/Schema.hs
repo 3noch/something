@@ -20,9 +20,9 @@ import qualified Database.PostgreSQL.Simple as Pg
 import Common.Schema
 
 data Db f = Db
-  { dbTranslation :: f (TableEntity TranslationT)
-  , dbBook :: f (TableEntity BookT)
-  , dbVerse :: f (TableEntity VerseT)
+  { _dbTranslation :: f (TableEntity TranslationT)
+  , _dbBook :: f (TableEntity BookT)
+  , _dbVerse :: f (TableEntity VerseT)
   }
   deriving stock Generic
   deriving anyclass (Database be)

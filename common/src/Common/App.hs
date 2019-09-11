@@ -112,7 +112,7 @@ instance Filterable ViewSelector where
     }
 instance (Monoid a) => Query (ViewSelector a) where
   type QueryResult (ViewSelector a) = View a
-  crop ViewSelector{} View{} = View mempty mempty
+  crop ViewSelector{} v = v -- TODO
 
 data View a = View
   { _view_translations :: !(Option (a, MonoidalMap TranslationId (First Translation)))

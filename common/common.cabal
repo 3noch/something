@@ -17,6 +17,7 @@ library
     , text
     , witherable
   default-extensions:
+    ConstraintKinds
     DataKinds
     DeriveFoldable
     DeriveGeneric

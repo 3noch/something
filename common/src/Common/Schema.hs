@@ -11,13 +11,13 @@ import GHC.Generics (Generic)
 import Common.Prelude
 
 data TranslationT f = Translation
- { translationId :: Columnar f Int
- , translationName :: Columnar f Text
- , translationAbbreviation :: Columnar f Text
+ { _translationId :: Columnar f Int
+ , _translationName :: Columnar f Text
+ , _translationAbbreviation :: Columnar f Text
  } deriving (Generic, Beamable)
 instance Table TranslationT where
   data PrimaryKey TranslationT f = TranslationId (Columnar f Int) deriving stock Generic deriving anyclass Beamable
-  primaryKey = TranslationId . translationId
+  primaryKey = TranslationId . _translationId
 
 type Translation = TranslationT Identity
 deriving instance Eq Translation
@@ -35,12 +35,12 @@ instance Json.ToJSONKey TranslationId
 instance Json.FromJSONKey TranslationId
 
 data BookT f = Book
-  { bookId :: Columnar f Int
-  , bookName :: Columnar f Text
+  { _bookId :: Columnar f Int
+  , _bookName :: Columnar f Text
   } deriving (Generic, Beamable)
 instance Table BookT where
   data PrimaryKey BookT f = BookId (Columnar f Int) deriving stock Generic deriving anyclass Beamable
-  primaryKey = BookId . bookId
+  primaryKey = BookId . _bookId
 
 type BookId = PrimaryKey BookT Identity
 deriving instance Eq BookId
@@ -50,15 +50,15 @@ instance FromJSON BookId
 instance ToJSON BookId
 
 data VerseT f = VerseT
-  { verseTranslation :: PrimaryKey TranslationT f
-  , verseBook :: PrimaryKey BookT f
-  , verseChapter :: Columnar f Int
-  , verseVerse :: Columnar f Int
-  , verseText :: Columnar f Text
+  { _verseTranslation :: PrimaryKey TranslationT f
+  , _verseBook :: PrimaryKey BookT f
+  , _verseChapter :: Columnar f Int
+  , _verseVerse :: Columnar f Int
+  , _verseText :: Columnar f Text
   } deriving (Generic, Beamable)
 instance Table VerseT where
   data PrimaryKey VerseT f = VerseId (PrimaryKey TranslationT f) (PrimaryKey BookT f) (Columnar f Int) (Columnar f Int) deriving stock Generic deriving anyclass Beamable
-  primaryKey = VerseId <$> verseTranslation <*> verseBook <*> verseChapter <*> verseVerse
+  primaryKey = VerseId <$> _verseTranslation <*> _verseBook <*> _verseChapter <*> _verseVerse
 
 type Verse = VerseT Identity
 deriving instance Eq Verse

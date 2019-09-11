@@ -18,6 +18,7 @@ library
   exposed-modules:
     Frontend
   default-extensions:
+    ConstraintKinds
     DataKinds
     DeriveFoldable
     DeriveGeneric

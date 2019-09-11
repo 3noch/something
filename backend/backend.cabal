@@ -32,6 +32,7 @@ library
     Backend.Transaction
     Backend.ViewSelectorHandler
   default-extensions:
+    ConstraintKinds
     DataKinds
     DeriveFoldable
     DeriveGeneric

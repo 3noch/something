@@ -14,7 +14,7 @@ import qualified Snap.Core as Snap
 import Backend.NotifyHandler (notifyHandler)
 import Backend.RequestHandler (requestHandler)
 import Backend.Schema (withDb)
-import Backend.Transaction (runTransaction)
+import Backend.Transaction (Transaction, runTransaction)
 import Backend.ViewSelectorHandler (viewSelectorHandler)
 import Common.Prelude
 import Common.Route (BackendRoute (..), FrontendRoute, fullRouteEncoder)
@@ -28,7 +28,9 @@ backend = Backend
 
 backendRun :: (MonadIO m) => ((R BackendRoute -> Snap.Snap ()) -> IO a) -> m a
 backendRun serve = withDb $ \dbPool -> do
-  let runTransaction' = runTransaction dbPool
+  let
+    runTransaction' :: Transaction a -> IO a
+    runTransaction' = runTransaction dbPool
   (handleListen, wsFinalizer) <- RhyoliteApp.serveDbOverWebsockets (unsafeCoerce dbPool {- To avoid importing groundhog -})
     (requestHandler runTransaction')
     (notifyHandler runTransaction')
