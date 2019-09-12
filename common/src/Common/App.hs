@@ -7,6 +7,7 @@
 module Common.App where
 
 import Control.Lens (_1)
+import Control.Lens.TH (makeLenses)
 import Data.Aeson (parseJSON, toJSON)
 import qualified Data.Aeson as Json
 import Data.Align (Align (nil), Semialign (alignWith))
@@ -58,27 +59,17 @@ instance Witherable Option where
 deriving newtype instance FromJSON SelectedCount
 deriving newtype instance ToJSON SelectedCount
 
-
-newtype TranslationAbbreviation = TranslationAbbreviation Text
-  deriving newtype (Eq, Show, Ord, FromJSON, ToJSON)
-
-data VerseReference = VerseReference
-  { _verseReference_book :: !Int
-  , _verseReference_chapter :: !Int
-  , _verseReference_verse :: !Int
-  } deriving (Eq, Generic, Show, Ord)
-deriveJSON Json.defaultOptions 'VerseReference
-
 data ClosedRange a = ClosedRange !a !a
   deriving (Eq, Generic, Show, Ord)
 deriveJSON Json.defaultOptions 'ClosedRange
 
 data ViewSelector a = ViewSelector
   { _viewSelector_translations :: !(Option a)
-  , _viewSelector_verses :: !(MonoidalMap (TranslationAbbreviation, ClosedRange VerseReference) a)
+  , _viewSelector_verses :: !(MonoidalMap (TranslationId, ClosedRange VerseReference) a)
   }
   deriving (Eq, Functor, Generic)
 deriveJSON Json.defaultOptions 'ViewSelector
+makeLenses 'ViewSelector
 instance Semigroup a => Semigroup (ViewSelector a) where
   a <> b = ViewSelector
     { _viewSelector_translations = _viewSelector_translations a <> _viewSelector_translations b
@@ -116,10 +107,11 @@ instance (Monoid a) => Query (ViewSelector a) where
 
 data View a = View
   { _view_translations :: !(Option (a, MonoidalMap TranslationId (First Translation)))
-  , _view_verses :: !(MonoidalMap (TranslationAbbreviation, ClosedRange VerseReference) (a, [Verse]))
+  , _view_verses :: !(MonoidalMap (TranslationId, ClosedRange VerseReference) (a, [Verse]))
   }
   deriving (Eq, Foldable, Functor, Generic)
 deriveJSON Json.defaultOptions 'View
+makeLenses 'View
 instance Semigroup a => Semigroup (View a) where
   a <> b = View
     { _view_translations = _view_translations a <> _view_translations b

@@ -1,8 +1,10 @@
 module Common.Prelude (module X) where
 
+import Control.Lens as X (ifor, ifor_, itraverse, itraverse_)
 import Control.Monad.IO.Class as X (MonadIO (liftIO))
 import Data.Aeson as X (FromJSON, ToJSON)
 import Data.Foldable as X (for_)
+import Data.Function as X ((&))
 import Data.Functor.Identity as X (Identity (..))
 import Data.Functor.Compose as X (Compose (..))
 import Data.Semigroup as X (Option (..))

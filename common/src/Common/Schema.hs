@@ -1,9 +1,11 @@
 {-# LANGUAGE DeriveAnyClass #-}
 {-# LANGUAGE FlexibleInstances #-}
+{-# LANGUAGE TemplateHaskell #-}
 
 module Common.Schema where
 
 import qualified Data.Aeson as Json
+import Data.Aeson.TH (deriveJSON)
 import Data.Text (Text)
 import Database.Beam (Beamable, Columnar, PrimaryKey, Table (primaryKey))
 import GHC.Generics (Generic)
@@ -18,7 +20,6 @@ data TranslationT f = Translation
 instance Table TranslationT where
   data PrimaryKey TranslationT f = TranslationId (Columnar f Int) deriving stock Generic deriving anyclass Beamable
   primaryKey = TranslationId . _translationId
-
 type Translation = TranslationT Identity
 deriving instance Eq Translation
 deriving instance Show Translation
@@ -72,3 +73,23 @@ deriving instance Ord VerseId
 deriving instance Show VerseId
 instance FromJSON VerseId
 instance ToJSON VerseId
+
+data VerseReference = VerseReference
+  { _verseReference_book :: !Int
+  , _verseReference_chapter :: !Int
+  , _verseReference_verse :: !Int
+  } deriving (Eq, Generic, Show, Ord)
+deriveJSON Json.defaultOptions 'VerseReference
+
+verseToVerseReference :: Verse -> VerseReference
+verseToVerseReference v = VerseReference
+  { _verseReference_book = let BookId x = _verseBook v in x
+  , _verseReference_chapter = _verseChapter v
+  , _verseReference_verse = _verseVerse v
+  }
+
+verseToTuple :: VerseT f -> (Columnar f Int, Columnar f Int, Columnar f Int)
+verseToTuple v = (let BookId x = _verseBook v in x, _verseChapter v, _verseVerse v)
+
+verseReferenceToTuple :: (Int -> f Int) -> VerseReference -> (f Int, f Int, f Int)
+verseReferenceToTuple f vr = (f $ _verseReference_book vr, f $ _verseReference_chapter vr, f $ _verseReference_verse vr)

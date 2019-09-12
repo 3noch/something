@@ -29,7 +29,7 @@ backend = Backend
 backendRun :: (MonadIO m) => ((R BackendRoute -> Snap.Snap ()) -> IO a) -> m a
 backendRun serve = withDb $ \dbPool -> do
   let
-    runTransaction' :: Transaction a -> IO a
+    runTransaction' :: Transaction mode a -> IO a
     runTransaction' = runTransaction dbPool
   (handleListen, wsFinalizer) <- RhyoliteApp.serveDbOverWebsockets (unsafeCoerce dbPool {- To avoid importing groundhog -})
     (requestHandler runTransaction')

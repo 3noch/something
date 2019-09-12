@@ -25,6 +25,7 @@ library
     DeriveTraversable
     DerivingStrategies
     EmptyCase
+    EmptyDataDecls
     GADTs
     GeneralizedNewtypeDeriving
     KindSignatures

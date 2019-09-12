@@ -7,7 +7,7 @@ import Backend.Transaction (Transaction)
 import Common.App (PrivateRequest (..), PublicRequest (..))
 import Common.Prelude
 
-requestHandler :: MonadIO m => (Transaction a -> m a) -> RequestHandler (ApiRequest () PublicRequest PrivateRequest) m
+requestHandler :: MonadIO m => (forall x. Transaction mode x -> m x) -> RequestHandler (ApiRequest () PublicRequest PrivateRequest) m
 requestHandler _runTransaction =
   RequestHandler $ \case
     ApiRequest_Public r -> case r of

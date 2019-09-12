@@ -17,6 +17,7 @@ library
     , exceptions
     , gargoyle-postgresql-connect
     , frontend
+    , lens
     , obelisk-backend
     , obelisk-route
     , postgresql-simple
@@ -39,6 +40,7 @@ library
     DeriveTraversable
     DerivingStrategies
     EmptyCase
+    EmptyDataDecls
     GADTs
     GeneralizedNewtypeDeriving
     KindSignatures
