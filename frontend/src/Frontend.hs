@@ -62,7 +62,7 @@ appWidget = do
       el "ol" $
         for_ ts $ \t -> el "li" $ text $ _translationName t
 
-  verses <- watchVerses $ pure (TranslationId 1, ClosedRange (VerseReference 1 1 1) (VerseReference 2 1 1))
+  verses <- watchVerses $ pure (TranslationId 1, ClosedRange (VerseReference 1 1 1) (VerseReference 1 2 1))
   dyn_ $ ffor verses $ \case
     Nothing -> blank
     Just vs ->

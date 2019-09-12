@@ -9,9 +9,7 @@ import Common.App (ClosedRange (..), View (..), ViewSelector (..))
 import Common.Prelude
 import Common.Schema
 import qualified Data.Map.Monoidal as MMap
-
-import Debug.Trace (trace)
-
+import qualified Database.Beam.Postgres as Pg
 
 viewSelectorHandler :: (Eq a, Semigroup a) => (forall x. (forall mode. Transaction mode x) -> IO x) -> ViewSelector a -> IO (View a)
 viewSelectorHandler runTransaction vs = if vs == mempty then pure mempty else runTransaction $ do
@@ -22,8 +20,8 @@ viewSelectorHandler runTransaction vs = if vs == mempty then pure mempty else ru
       pure $ Just (a, MMap.fromList [(pk t, First t) | t <- translations])
 
   verses <- if _viewSelector_verses vs == mempty then pure mempty else
-    ifor (_viewSelector_verses vs) $ \(translationId, rng) a -> do
-      trace ("Trying to do: " <> show rng) $ (a,) <$> getVersesInRange translationId rng
+    ifor (_viewSelector_verses vs) $ \(translationId, rng) a ->
+      (a,) <$> getVersesInRange translationId rng
 
   pure $ View translations verses
 
@@ -35,11 +33,10 @@ getVersesInRange translationId (ClosedRange lowRef highRef) =
         verse <- all_ (_dbVerse db)
         guard_ (_verseTranslation verse ==. val_ translationId)
 
-        -- HACK: Apparently beam doesn't have a way to do ordering on composite types??
-        let
-          verseIntHack =
-            let BookId bookInt = _verseBook verse
-             in bookInt * val_ 100000000 + _verseChapter verse * val_ 100000 + _verseVerse verse
-          toVerseIntHack (VerseReference book chapter vs) = val_ $ book * 100000000 + chapter * 100000 + vs
-        guard_ (between_ verseIntHack (toVerseIntHack lowRef) (toVerseIntHack highRef))
+        let BookId bookInt = _verseBook verse
+        guard_ (between_
+            (Pg.array_ [bookInt, _verseChapter verse, _verseVerse verse])
+            (Pg.array_ [val_ $ _verseReference_book lowRef, val_ $ _verseReference_chapter lowRef, val_ $ _verseReference_verse lowRef])
+            (Pg.array_ [val_ $ _verseReference_book highRef, val_ $ _verseReference_chapter highRef, val_ $ _verseReference_verse highRef])
+          )
         pure verse
