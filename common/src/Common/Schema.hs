@@ -7,6 +7,7 @@ module Common.Schema where
 import qualified Data.Aeson as Json
 import Data.Aeson.TH (deriveJSON)
 import Data.Text (Text)
+import qualified Data.Text as T
 import Database.Beam (Beamable, Columnar, PrimaryKey, Table (primaryKey))
 import GHC.Generics (Generic)
 
@@ -88,8 +89,5 @@ verseToVerseReference v = VerseReference
   , _verseReference_verse = _verseVerse v
   }
 
-verseToTuple :: VerseT f -> (Columnar f Int, Columnar f Int, Columnar f Int)
-verseToTuple v = (let BookId x = _verseBook v in x, _verseChapter v, _verseVerse v)
-
-verseReferenceToTuple :: (Int -> f Int) -> VerseReference -> (f Int, f Int, f Int)
-verseReferenceToTuple f vr = (f $ _verseReference_book vr, f $ _verseReference_chapter vr, f $ _verseReference_verse vr)
+showVerseReference :: VerseReference -> Text
+showVerseReference (VerseReference b c v) = T.pack (show b <> "@" <> show c <> ":" <> show v)

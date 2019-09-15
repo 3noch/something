@@ -8,12 +8,13 @@ library
   build-depends:
       base
     , common
+    , IntervalMap
+    , obelisk-executable-config-lookup
     , obelisk-frontend
+    , obelisk-generated-static
     , obelisk-route
     , reflex-dom
     , rhyolite-frontend
-    , obelisk-executable-config-lookup
-    , obelisk-generated-static
     , text
   exposed-modules:
     Frontend
