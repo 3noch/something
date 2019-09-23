@@ -6,6 +6,7 @@ module Frontend where
 import Control.Lens
 import qualified Data.IntervalSet as IntervalSet
 import Data.IntervalMap.Interval (Interval (..))
+import qualified Data.Map as Map
 import qualified Data.Map.Monoidal as MMap
 import Data.Semigroup (First (..))
 import qualified Data.Text as T
@@ -65,29 +66,41 @@ appWidget = do
       el "ol" $
         for_ ts $ \t -> el "li" $ text $ _translationName t
 
-  verses <- watchVerses $ pure (TranslationId 1, ClosedRange (VerseReference 1 1 1) (VerseReference 1 3 9999))
-  dyn_ $ ffor verses $ \case
-    Nothing -> blank
-    Just vs -> mdo
-      ((), selectWord) <- fmap (second (fmap getFirst)) $ runEventWriterT $
+  upClicked <- fmap (domEvent Click . fst) $ el' "div" $ text "Up"
+  rec
+    versesWidget <=< watchVerses $ (TranslationId 1, ) <$> range
+    downClicked <- fmap (domEvent Click . fst) $ el' "div" $ text "Down"
+    range <- foldDyn ($) (ClosedRange (VerseReference 1 1 1) (VerseReference 1 3 9999)) $ leftmost
+      [ upClicked $> \(ClosedRange (VerseReference book1 chap1 _) _) ->
+          ClosedRange
+            (if chap1 == 1 then VerseReference (max 1 (book1 - 1)) 1 1 else VerseReference book1 (chap1 - 1) 1)
+            (VerseReference book1 (chap1 + 3) 9999)
+      , downClicked $> \(ClosedRange (VerseReference book1 chap1 _) _) ->
+          ClosedRange (VerseReference book1 (chap1 + 1) 1) (VerseReference book1 (chap1 + 4) 9999)
+      ]
+  pure ()
 
-        for_ vs $ \v -> el "p" $ do
-          let vref = verseToVerseReference v
-          let yellow = "style" =: "background-color: yellow;"
-          let blue = "style" =: "background-color: blue;"
-          text $ showVerseReference vref
-          ifor_ (T.words $ _verseText v) $ \i w ->
-            elDynAttr "span" (ffor selections $ \sels -> if null (IntervalSet.containing sels (vref, i)) then mempty else yellow) $ do
-              (elmnt, _) <- elDynAttr' "a" (ffor highlightState $ \firstWord -> if firstWord == Just (vref, i) then blue else mempty) $ text w
-              text " "
-              tellEvent $ First (vref, i) <$ domEvent Click elmnt
+  where
+    versesWidget verses = mdo
+      (_, selectWord) <- fmap (second (fmap getFirst)) $ runEventWriterT $ do
+        let keyedVerse v = (verseToVerseReference v, v)
+        listWithKey (fmap (maybe mempty (Map.fromList . map keyedVerse)) verses) $ \vref vDyn ->
+          el "p" $ do
+            let yellow = "style" =: "background-color: yellow;"
+            let blue = "style" =: "background-color: blue;"
+            text $ showVerseReference vref
+            dyn_ $ ffor vDyn $ \v -> ifor_ (T.words $ _verseText v) $ \i w ->
+              elDynAttr "span" (ffor selections $ \sels -> if null (IntervalSet.containing sels (vref, i)) then mempty else yellow) $ do
+                (elmnt, _) <- elDynAttr' "a" (ffor highlightState $ \firstWord -> if firstWord == Just (vref, i) then blue else mempty) $ text w
+                text " "
+                tellEvent $ First (vref, i) <$ domEvent Click elmnt
 
       let
         -- Given a new value @a@ and a previous 'Maybe', flip 'Just _' to 'Nothing' and 'Nothing' to @Just a@.
         toggleMaybes :: a -> Maybe a -> Maybe a
         toggleMaybes a = \case
-            Nothing -> Just a
-            Just _ -> Nothing
+          Nothing -> Just a
+          Just _ -> Nothing
 
       -- Highlight state enters "highlighting" when you select your first word, then goes back when you select the second.
       -- Thus this state always stores the first word of a highlight or 'Nothing' if not highlighting.
