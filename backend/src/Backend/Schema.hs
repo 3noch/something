@@ -23,6 +23,9 @@ data Db f = Db
   { _dbTranslation :: f (TableEntity TranslationT)
   , _dbBook :: f (TableEntity BookT)
   , _dbVerse :: f (TableEntity VerseT)
+  , _dbTag :: f (TableEntity TagT)
+  , _dbTaggedRange :: f (TableEntity TaggedRangeT)
+  , _dbTaggedRangeByWord :: f (TableEntity TaggedRangeByWordT)
   }
   deriving stock Generic
   deriving anyclass (Database be)

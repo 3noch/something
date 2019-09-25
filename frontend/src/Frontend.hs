@@ -6,7 +6,6 @@ module Frontend where
 import Control.Lens
 import qualified Data.IntervalSet as IntervalSet
 import Data.IntervalMap.Interval (Interval (..))
-import qualified Data.Map as Map
 import qualified Data.Map.Monoidal as MMap
 import Data.Semigroup (First (..))
 import qualified Data.Text as T
@@ -70,26 +69,25 @@ appWidget = do
   rec
     versesWidget <=< watchVerses $ (TranslationId 1, ) <$> range
     downClicked <- fmap (domEvent Click . fst) $ el' "div" $ text "Down"
-    range <- foldDyn ($) (ClosedRange (VerseReference 1 1 1) (VerseReference 1 3 9999)) $ leftmost
-      [ upClicked $> \(ClosedRange (VerseReference book1 chap1 _) _) ->
-          ClosedRange
+    range <- foldDyn ($) (IntervalCO (VerseReference 1 1 1) (VerseReference 1 3 9999)) $ leftmost
+      [ upClicked $> \(IntervalCO (VerseReference book1 chap1 _) _) ->
+          IntervalCO
             (if chap1 == 1 then VerseReference (max 1 (book1 - 1)) 1 1 else VerseReference book1 (chap1 - 1) 1)
             (VerseReference book1 (chap1 + 3) 9999)
-      , downClicked $> \(ClosedRange (VerseReference book1 chap1 _) _) ->
-          ClosedRange (VerseReference book1 (chap1 + 1) 1) (VerseReference book1 (chap1 + 4) 9999)
+      , downClicked $> \(IntervalCO (VerseReference book1 chap1 _) _) ->
+          IntervalCO (VerseReference book1 (chap1 + 1) 1) (VerseReference book1 (chap1 + 4) 9999)
       ]
   pure ()
 
   where
     versesWidget verses = mdo
-      (_, selectWord) <- fmap (second (fmap getFirst)) $ runEventWriterT $ do
-        let keyedVerse v = (verseToVerseReference v, v)
-        listWithKey (fmap (maybe mempty (Map.fromList . map keyedVerse)) verses) $ \vref vDyn ->
+      (_, selectWord) <- fmap (second (fmap getFirst)) $ runEventWriterT $
+        listWithKey (fromMaybe mempty . coerce <$> verses) $ \vref vDyn ->
           el "p" $ do
             let yellow = "style" =: "background-color: yellow;"
             let blue = "style" =: "background-color: blue;"
             text $ showVerseReference vref
-            dyn_ $ ffor vDyn $ \v -> ifor_ (T.words $ _verseText v) $ \i w ->
+            dyn_ $ ffor vDyn $ \v -> ifor_ (T.words v) $ \i w ->
               elDynAttr "span" (ffor selections $ \sels -> if null (IntervalSet.containing sels (vref, i)) then mempty else yellow) $ do
                 (elmnt, _) <- elDynAttr' "a" (ffor highlightState $ \firstWord -> if firstWord == Just (vref, i) then blue else mempty) $ text w
                 text " "
@@ -124,9 +122,10 @@ watchTranslations =
 
 watchVerses
   :: (HasApp t m, MonadHold t m, MonadFix m)
-  => Dynamic t (TranslationId, ClosedRange VerseReference)
-  -> m (Dynamic t (Maybe [Verse]))
+  => Dynamic t (TranslationId, Interval VerseReference)
+  -> m (Dynamic t (Maybe (MonoidalMap VerseReference Text)))
 watchVerses rng = do
-  result <- watchViewSelector $ ffor rng $ \rng' -> mempty { _viewSelector_verses = MMap.singleton rng' 1 }
-  pure $ ffor2 rng result $ \rng' result' ->
-    result' ^? view_verses . ix rng' . _2
+  result <- watchViewSelector $ ffor rng $ \(translationId, interval) -> mempty
+    { _viewSelector_verseRanges = MMap.singleton translationId $ MMap.singleton interval 1 }
+  pure $ ffor2 rng result $ \(translationId, _interval) result' -> -- TODO: Filter out verses that fit interval
+    result' ^? view_verses . ix translationId

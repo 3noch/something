@@ -9,6 +9,7 @@ library
       aeson
     , aeson-gadt-th
     , base
+    , IntervalMap
     , lens
     , mtl
     , obelisk-route

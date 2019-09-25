@@ -1,3 +1,4 @@
+{-# LANGUAGE DeriveAnyClass #-}
 {-# LANGUAGE FlexibleContexts #-}
 {-# LANGUAGE FlexibleInstances #-}
 {-# LANGUAGE TemplateHaskell #-}
@@ -16,6 +17,12 @@ import Data.Aeson.TH (deriveJSON)
 import Data.Aeson.GADT.TH (deriveJSONGADT)
 import Data.Constraint.Extras.TH (deriveArgDict)
 import Data.GADT.Show.TH (deriveGShow)
+import Data.IntervalSet (IntervalSet)
+import qualified Data.IntervalSet as IntervalSet
+import Data.IntervalMap.Interval (Interval (..))
+import qualified Data.Map as Map
+import qualified Data.Map.Monoidal as MMap
+import Data.These (These (This, That), these)
 import Data.Semigroup (First)
 import Data.Witherable (Witherable (wither))
 import Data.MonoidMap (MonoidMap)
@@ -35,7 +42,7 @@ fmap concat $ sequence
   ]
 
 data PrivateRequest a where
-    PrivateRequest_NoOp :: PrivateRequest ()
+  PrivateRequest_NoOp :: PrivateRequest ()
 fmap concat $ sequence
   [ deriveJSONGADT ''PrivateRequest
   , deriveArgDict ''PrivateRequest
@@ -59,13 +66,43 @@ instance Witherable Option where
 deriving newtype instance FromJSON SelectedCount
 deriving newtype instance ToJSON SelectedCount
 
-data ClosedRange a = ClosedRange !a !a
-  deriving (Eq, Generic, Show, Ord)
-deriveJSON Json.defaultOptions 'ClosedRange
+------------------
+data IntervalCarrierType = IntervalCarrierType_CO | IntervalCarrierType_Closed | IntervalCarrierType_Open | IntervalCarrierType_OC
+  deriving (Bounded, Enum, Eq, Generic, Ord, Show)
+  deriving anyclass (ToJSON, FromJSON)
+
+intervalToCarrier :: Interval a -> (IntervalCarrierType, a, a)
+intervalToCarrier = \case
+  IntervalCO a b -> (IntervalCarrierType_CO, a, b)
+  ClosedInterval a b -> (IntervalCarrierType_Closed, a, b)
+  OpenInterval a b -> (IntervalCarrierType_Open, a, b)
+  IntervalOC a b -> (IntervalCarrierType_OC, a, b)
+
+carrierToInterval :: (IntervalCarrierType, a, a) -> Interval a
+carrierToInterval (t, a, b) = case t of
+  IntervalCarrierType_CO -> IntervalCO a b
+  IntervalCarrierType_Closed -> ClosedInterval a b
+  IntervalCarrierType_Open -> OpenInterval a b
+  IntervalCarrierType_OC -> IntervalOC a b
+
+-- Orphan
+instance ToJSON a => ToJSON (Interval a) where
+  toJSON = toJSON . intervalToCarrier
+  toEncoding = Json.toEncoding . intervalToCarrier
+instance FromJSON a => FromJSON (Interval a) where
+  parseJSON = fmap carrierToInterval . parseJSON
+
+instance ToJSON k => Json.ToJSONKey (Interval k)
+instance FromJSON k => Json.FromJSONKey (Interval k)
+------------------
+
+mapMaybe2Deep :: (Foldable t, Filterable f, Filterable t) => (a -> Maybe b) -> f (t a) -> f (t b)
+mapMaybe2Deep f = mapMaybe (notNull . mapMaybe f)
+  where notNull gb = if null gb then Nothing else Just gb
 
 data ViewSelector a = ViewSelector
   { _viewSelector_translations :: !(Option a)
-  , _viewSelector_verses :: !(MonoidalMap (TranslationId, ClosedRange VerseReference) a)
+  , _viewSelector_verseRanges :: !(MonoidalMap TranslationId (MonoidalMap (Interval VerseReference) a))
   }
   deriving (Eq, Functor, Generic)
 deriveJSON Json.defaultOptions 'ViewSelector
@@ -73,7 +110,7 @@ makeLenses 'ViewSelector
 instance Semigroup a => Semigroup (ViewSelector a) where
   a <> b = ViewSelector
     { _viewSelector_translations = _viewSelector_translations a <> _viewSelector_translations b
-    , _viewSelector_verses = _viewSelector_verses a <> _viewSelector_verses b
+    , _viewSelector_verseRanges = _viewSelector_verseRanges a <> _viewSelector_verseRanges b
     }
 instance Semigroup a => Monoid (ViewSelector a) where
   mempty = ViewSelector mempty mempty
@@ -81,11 +118,11 @@ instance Semigroup a => Monoid (ViewSelector a) where
 instance Semialign ViewSelector where
   alignWith f a b = ViewSelector
     { _viewSelector_translations = alignWith f (_viewSelector_translations a) (_viewSelector_translations b)
-    , _viewSelector_verses = alignWith f (_viewSelector_verses a) (_viewSelector_verses b)
+    , _viewSelector_verseRanges = getCompose $ alignWith f (Compose $ _viewSelector_verseRanges a) (Compose $ _viewSelector_verseRanges b)
     }
   zipWith f a b = ViewSelector
     { _viewSelector_translations = Align.zipWith f (_viewSelector_translations a) (_viewSelector_translations b)
-    , _viewSelector_verses = Align.zipWith f (_viewSelector_verses a) (_viewSelector_verses b)
+    , _viewSelector_verseRanges = getCompose $ Align.zipWith f (Compose $ _viewSelector_verseRanges a) (Compose $ _viewSelector_verseRanges b)
     }
 instance Align ViewSelector where
   nil = ViewSelector nil nil
@@ -99,7 +136,7 @@ instance (Ord k) => PositivePart (ViewSelector (MonoidMap k SelectedCount)) wher
 instance Filterable ViewSelector where
   mapMaybe f x = ViewSelector
     { _viewSelector_translations = mapMaybe f (_viewSelector_translations x)
-    , _viewSelector_verses = mapMaybe f (_viewSelector_verses x)
+    , _viewSelector_verseRanges = mapMaybe2Deep f (_viewSelector_verseRanges x)
     }
 instance (Monoid a) => Query (ViewSelector a) where
   type QueryResult (ViewSelector a) = View a
@@ -107,7 +144,8 @@ instance (Monoid a) => Query (ViewSelector a) where
 
 data View a = View
   { _view_translations :: !(Option (a, MonoidalMap TranslationId (First Translation)))
-  , _view_verses :: !(MonoidalMap (TranslationId, ClosedRange VerseReference) (a, [Verse]))
+  , _view_verseRanges :: !(MonoidalMap TranslationId (MonoidalMap (Interval VerseReference) a))
+  , _view_verses :: !(MonoidalMap TranslationId (MonoidalMap VerseReference Text))
   }
   deriving (Eq, Foldable, Functor, Generic)
 deriveJSON Json.defaultOptions 'View
@@ -115,24 +153,34 @@ makeLenses 'View
 instance Semigroup a => Semigroup (View a) where
   a <> b = View
     { _view_translations = _view_translations a <> _view_translations b
+    , _view_verseRanges = _view_verseRanges a <> _view_verseRanges b
     , _view_verses = _view_verses a <> _view_verses b
     }
 instance Semigroup a => Monoid (View a) where
-  mempty = View mempty mempty
+  mempty = View mempty mempty mempty
   mappend = (<>)
 instance Filterable View where
   mapMaybe f x = View
     { _view_translations = mapMaybeView f (_view_translations x)
-    , _view_verses = mapMaybeView f (_view_verses x)
+    , _view_verseRanges = verseRanges
+    , _view_verses = flip MMap.mapWithKey (_view_verses x) $ \k v ->
+        let ranges :: IntervalSet (Interval VerseReference) =
+              maybe mempty (IntervalSet.fromDistinctAscList . map fst . MMap.toAscList) $ MMap.lookup k verseRanges
+        in if null ranges then mempty else MMap.filterWithKey (\k _ -> not $ null $ ranges `IntervalSet.containing` k) v
     }
+    where
+      verseRanges = mapMaybe2Deep f $ _view_verseRanges x
 
 mapMaybeView
-  :: forall f v a b.
-  ( Filterable f )
+  :: forall f v a b. (Filterable f)
   => (a -> Maybe b)
   -> f (a, v)
   -> f (b, v)
 mapMaybeView f = mapMaybe ((_1 :: (a -> Maybe b) -> (a, v) -> Maybe (b, v)) f)
+
+restrictKeys :: forall k v. Ord k => MonoidalMap k v -> Set k -> MonoidalMap k v
+restrictKeys = coerce (Map.restrictKeys :: Map k v -> Set k -> Map k v)
+
 
 nothingOnNull :: Foldable f => f a -> Maybe (f a)
 nothingOnNull f = if null f then Nothing else Just f
