@@ -106,7 +106,9 @@ appWidget = do
 
       let
         captureRange :: Maybe (VerseReference, Int) -> (VerseReference, Int) -> Maybe (Interval (VerseReference, Int))
-        captureRange firstWord lastWord = firstWord <&> \fstWord -> ClosedInterval fstWord lastWord
+        captureRange firstWord lastWord = firstWord <&> \fstWord -> if lastWord >= fstWord
+          then ClosedInterval fstWord lastWord
+          else ClosedInterval lastWord fstWord
 
         highlightFinished :: Event t (Interval (VerseReference, Int)) = fmapMaybe id $ captureRange <$> current highlightState <@> selectWord
 
