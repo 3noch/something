@@ -2,6 +2,7 @@
 {-# LANGUAGE FlexibleContexts #-}
 {-# LANGUAGE FlexibleInstances #-}
 {-# LANGUAGE TemplateHaskell #-}
+{-# LANGUAGE UndecidableInstances #-} -- For deriveJSONGADT
 
 {-# OPTIONS_GHC -fno-warn-orphans #-}
 
@@ -21,8 +22,8 @@ import Data.IntervalSet (IntervalSet)
 import qualified Data.IntervalSet as IntervalSet
 import Data.IntervalMap.Interval (Interval (..))
 import qualified Data.Map as Map
+import qualified Data.Map.Merge.Lazy as Map
 import qualified Data.Map.Monoidal as MMap
-import Data.These (These (This, That), these)
 import Data.Semigroup (First)
 import Data.Witherable (Witherable (wither))
 import Data.MonoidMap (MonoidMap)
@@ -34,7 +35,7 @@ import Common.Prelude
 import Common.Schema
 
 data PublicRequest a where
-  PublicRequest_NoOp :: PublicRequest ()
+  PublicRequest_AddTag :: Text -> TranslationId -> (VerseReference, Int) -> (VerseReference, Int) -> PublicRequest ()
 deriving instance Show a => Show (PublicRequest a)
 fmap concat $ sequence
   [ deriveJSONGADT ''PublicRequest
@@ -138,9 +139,38 @@ instance Filterable ViewSelector where
     { _viewSelector_translations = mapMaybe f (_viewSelector_translations x)
     , _viewSelector_verseRanges = mapMaybe2Deep f (_viewSelector_verseRanges x)
     }
-instance (Monoid a) => Query (ViewSelector a) where
+instance (Monoid a, Eq a) => Query (ViewSelector a) where
   type QueryResult (ViewSelector a) = View a
-  crop ViewSelector{} v = v -- TODO
+  crop vs v = View
+    { _view_translations = if null $ _viewSelector_translations vs then mempty else _view_translations v
+    , _view_verseRanges = verseRanges
+    , _view_verses = cropVerses verseRanges (_view_verses v)
+    }
+    where
+      verseRanges = croppedIntersectionWith (croppedIntersectionWith const) (_viewSelector_verseRanges vs) (_view_verseRanges v)
+
+-- Intersect a map from the viewselector and a map from the view to produce a cropped map for the view, dropping any key for which the entry is selected mempty (zero) times.
+croppedIntersectionWith :: (Ord k, Eq a, Monoid a) => (a -> b -> c) -> MonoidalMap k a -> MonoidalMap k b -> MonoidalMap k c
+croppedIntersectionWith f (MMap.MonoidalMap m) (MMap.MonoidalMap m') = MMap.MonoidalMap $
+  Map.merge
+    Map.dropMissing
+    Map.dropMissing
+    (Map.zipWithMaybeMatched (\_ a v -> if a == mempty then Nothing else Just (f a v)))
+    m
+    m'
+
+cropVerses
+  :: (Ord k, Monoid a)
+  => MonoidalMap k (MonoidalMap (Interval VerseReference) b)
+  -> MonoidalMap k (MonoidalMap VerseReference a)
+  -> MonoidalMap k (MonoidalMap VerseReference a)
+cropVerses verseRanges verses = flip MMap.mapWithKey verses $ \k v ->
+  let
+    ranges :: IntervalSet (Interval VerseReference) =
+      maybe mempty (IntervalSet.fromDistinctAscList . map fst . MMap.toAscList) $ MMap.lookup k verseRanges
+  in if null ranges then mempty else MMap.filterWithKey (\ref _ -> not $ null $ ranges `IntervalSet.containing` ref) v
+
+
 
 data View a = View
   { _view_translations :: !(Option (a, MonoidalMap TranslationId (First Translation)))
@@ -163,10 +193,7 @@ instance Filterable View where
   mapMaybe f x = View
     { _view_translations = mapMaybeView f (_view_translations x)
     , _view_verseRanges = verseRanges
-    , _view_verses = flip MMap.mapWithKey (_view_verses x) $ \k v ->
-        let ranges :: IntervalSet (Interval VerseReference) =
-              maybe mempty (IntervalSet.fromDistinctAscList . map fst . MMap.toAscList) $ MMap.lookup k verseRanges
-        in if null ranges then mempty else MMap.filterWithKey (\k _ -> not $ null $ ranges `IntervalSet.containing` k) v
+    , _view_verses = cropVerses verseRanges (_view_verses x)
     }
     where
       verseRanges = mapMaybe2Deep f $ _view_verseRanges x

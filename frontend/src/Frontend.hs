@@ -15,7 +15,7 @@ import Obelisk.Configs (HasConfigs (getConfig))
 import Obelisk.Frontend (Frontend (..))
 import Obelisk.Route.Frontend
 import Reflex.Dom.Core
-import Rhyolite.Api (ApiRequest)
+import Rhyolite.Api (ApiRequest, public)
 import Rhyolite.Frontend.App (RhyoliteWidget, runObeliskRhyoliteWidget, watchViewSelector)
 
 import Common.App
@@ -54,6 +54,8 @@ type HasApp t m =
   , Response m ~ Identity
   )
 
+defaultTranslation :: TranslationId
+defaultTranslation = TranslationId 1
 
 appWidget :: forall m t. (HasApp t m, DomBuilder t m, PostBuild t m, MonadHold t m, MonadFix m) => m ()
 appWidget = do
@@ -67,15 +69,17 @@ appWidget = do
 
   upClicked <- fmap (domEvent Click . fst) $ el' "div" $ text "Up"
   rec
-    versesWidget <=< watchVerses $ (TranslationId 1, ) <$> range
+    versesWidget <=< watchVerses $ (defaultTranslation, ) <$> range
     downClicked <- fmap (domEvent Click . fst) $ el' "div" $ text "Down"
-    range <- foldDyn ($) (IntervalCO (VerseReference 1 1 1) (VerseReference 1 3 9999)) $ leftmost
-      [ upClicked $> \(IntervalCO (VerseReference book1 chap1 _) _) ->
+    range <- foldDyn ($) (IntervalCO (VerseReferenceT (BookId 1) 1 1) (VerseReferenceT (BookId 1) 3 9999)) $ leftmost
+      [ upClicked $> \(IntervalCO (VerseReferenceT book1 chap1 _) _) ->
           IntervalCO
-            (if chap1 == 1 then VerseReference (max 1 (book1 - 1)) 1 1 else VerseReference book1 (chap1 - 1) 1)
-            (VerseReference book1 (chap1 + 3) 9999)
-      , downClicked $> \(IntervalCO (VerseReference book1 chap1 _) _) ->
-          IntervalCO (VerseReference book1 (chap1 + 1) 1) (VerseReference book1 (chap1 + 4) 9999)
+            (if chap1 == 1
+              then VerseReferenceT (BookId $ max 1 (unBookId book1 - 1)) 1 1
+              else VerseReferenceT book1 (chap1 - 1) 1)
+            (VerseReferenceT book1 (chap1 + 3) 9999)
+      , downClicked $> \(IntervalCO (VerseReferenceT book1 chap1 _) _) ->
+          IntervalCO (VerseReferenceT book1 (chap1 + 1) 1) (VerseReferenceT book1 (chap1 + 4) 9999)
       ]
   pure ()
 
@@ -113,6 +117,8 @@ appWidget = do
         highlightFinished :: Event t (Interval (VerseReference, Int)) = fmapMaybe id $ captureRange <$> current highlightState <@> selectWord
 
       selections <- foldDyn IntervalSet.insert mempty highlightFinished
+      _ <- requestingIdentity $ ffor highlightFinished $ \(ClosedInterval start end) ->
+        public $ PublicRequest_AddTag "test" defaultTranslation start end
       pure ()
 
 watchTranslations

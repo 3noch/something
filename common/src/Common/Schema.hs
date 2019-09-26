@@ -1,14 +1,13 @@
 {-# LANGUAGE DeriveAnyClass #-}
 {-# LANGUAGE FlexibleInstances #-}
-{-# LANGUAGE TemplateHaskell #-}
 
 module Common.Schema where
 
 import qualified Data.Aeson as Json
-import Data.Aeson.TH (deriveJSON)
 import Data.Text (Text)
 import qualified Data.Text as T
 import Database.Beam (Beamable, Columnar, PrimaryKey, Table (primaryKey))
+import Database.Beam.Backend.SQL.Types (SqlSerial)
 import GHC.Generics (Generic)
 
 import Common.Prelude
@@ -45,7 +44,7 @@ data BookT f = Book
   , _bookName :: Columnar f Text
   } deriving (Generic, Beamable)
 instance Table BookT where
-  data PrimaryKey BookT f = BookId (Columnar f Int) deriving stock Generic deriving anyclass Beamable
+  data PrimaryKey BookT f = BookId { unBookId :: Columnar f Int } deriving stock Generic deriving anyclass Beamable
   primaryKey = BookId . _bookId
 
 type BookId = PrimaryKey BookT Identity
@@ -86,11 +85,11 @@ instance ToJSON VerseId
 
 -------------------------------------------------------------------------------
 data TagT f = TagT
-  { _tagId :: Columnar f Int
+  { _tagId :: Columnar f (SqlSerial Int)
   , _tagName :: Columnar f Text
   } deriving (Generic, Beamable)
 instance Table TagT where
-  data PrimaryKey TagT f = TagId (Columnar f Int) deriving stock Generic deriving anyclass Beamable
+  data PrimaryKey TagT f = TagId (Columnar f (SqlSerial Int)) deriving stock Generic deriving anyclass Beamable
   primaryKey = TagId <$> _tagId
 
 type Tag = TagT Identity
@@ -116,22 +115,28 @@ data VerseReferenceT f = VerseReferenceT
   }
   deriving stock Generic
   deriving anyclass Beamable
-deriving instance Eq (VerseReferenceT Identity)
-deriving instance Show (VerseReferenceT Identity)
-instance FromJSON (VerseReferenceT Identity)
-instance ToJSON (VerseReferenceT Identity)
+
+type VerseReference = VerseReferenceT Identity
+deriving instance Eq VerseReference
+deriving instance Ord VerseReference
+deriving instance Show VerseReference
+instance FromJSON VerseReference
+instance ToJSON VerseReference
+instance Json.ToJSONKey VerseReference
+instance Json.FromJSONKey VerseReference
+
 -------------------------------------------------------------------------------
 
 
 -------------------------------------------------------------------------------
 data TaggedRangeT f = TaggedRangeT
-  { _taggedrangeId :: Columnar f Int
+  { _taggedrangeId :: Columnar f (SqlSerial Int)
   , _taggedrangeFor :: PrimaryKey TagT f
   , _taggedrangeStart :: VerseReferenceT f
   , _taggedrangeEnd :: VerseReferenceT f
   } deriving (Generic, Beamable)
 instance Table TaggedRangeT where
-  data PrimaryKey TaggedRangeT f = TaggedRangeId (Columnar f Int) deriving stock Generic deriving anyclass Beamable
+  data PrimaryKey TaggedRangeT f = TaggedRangeId (Columnar f (SqlSerial Int)) deriving stock Generic deriving anyclass Beamable
   primaryKey = TaggedRangeId <$> _taggedrangeId
 -------------------------------------------------------------------------------
 
@@ -150,25 +155,16 @@ instance Table TaggedRangeByWordT where
 
 
 -------------------------------------------------------------------------------
-data VerseReference = VerseReference
-  { _verseReference_book :: !Int
-  , _verseReference_chapter :: !Int
-  , _verseReference_verse :: !Int
-  } deriving (Eq, Generic, Show, Ord)
-deriveJSON Json.defaultOptions 'VerseReference
-instance Json.ToJSONKey VerseReference
-instance Json.FromJSONKey VerseReference
-
-verseToVerseReference :: Verse -> VerseReference
-verseToVerseReference v = VerseReference
-  { _verseReference_book = let BookId x = _verseBook v in x
-  , _verseReference_chapter = _verseChapter v
-  , _verseReference_verse = _verseVerse v
+verseToVerseReference :: VerseT f -> VerseReferenceT f
+verseToVerseReference v = VerseReferenceT
+  { _versereferenceBook = _verseBook v
+  , _versereferenceChapter = _verseChapter v
+  , _versereferenceVerse = _verseVerse v
   }
 
 verseToVerseReferenceTuple :: VerseT f -> (PrimaryKey BookT f, Columnar f Int, Columnar f Int)
 verseToVerseReferenceTuple v = (_verseBook v, _verseChapter v, _verseVerse v)
 
 showVerseReference :: VerseReference -> Text
-showVerseReference (VerseReference b c v) = T.pack (show b <> "@" <> show c <> ":" <> show v)
+showVerseReference (VerseReferenceT b c v) = T.pack (show b <> "@" <> show c <> ":" <> show v)
 -------------------------------------------------------------------------------

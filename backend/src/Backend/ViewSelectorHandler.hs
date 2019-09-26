@@ -39,15 +39,14 @@ getVersesInInterval translationId interval = fmap (MMap.fromDistinctAscList . ma
   runQuery $
     runSelectReturningList $
       select $
-        orderBy_ (\v -> (asc_ $ (\(BookId x) -> x) (_verseBook v), asc_ $ _verseChapter v, asc_ $ _verseVerse v))
+        orderBy_ (\v -> (asc_ $ unBookId $ _verseBook v, asc_ $ _verseChapter v, asc_ $ _verseVerse v))
         $ do
           verse <- all_ (_dbVerse db)
           guard_ (_verseTranslation verse ==. val_ translationId)
 
-          let BookId bookInt = _verseBook verse
           guard_ $ withinInterval_
-            (fmap (\x -> Pg.array_ [val_ $ _verseReference_book x, val_ $ _verseReference_chapter x, val_ $ _verseReference_verse x]) interval)
-            (Pg.array_ [bookInt, _verseChapter verse, _verseVerse verse])
+            (fmap (\x -> Pg.array_ [val_ $ unBookId $ _versereferenceBook x, val_ $ _versereferenceChapter x, val_ $ _versereferenceVerse x]) interval)
+            (Pg.array_ [unBookId $ _verseBook verse, _verseChapter verse, _verseVerse verse])
           pure verse
 
 withinInterval_ :: BeamSqlBackend be => Interval (QGenExpr context be s a) -> QGenExpr context be s a -> QGenExpr context be s Bool
