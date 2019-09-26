@@ -9,12 +9,15 @@ library
       base
     , common
     , IntervalMap
+    , lens
+    , monoidal-containers
     , obelisk-executable-config-lookup
     , obelisk-frontend
     , obelisk-generated-static
     , obelisk-route
     , reflex-dom
     , rhyolite-frontend
+    , rhyolite-common
     , text
   exposed-modules:
     Frontend

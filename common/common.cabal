@@ -9,13 +9,20 @@ library
       aeson
     , aeson-gadt-th
     , base
+    , beam-core
+    , containers
+    , constraints-extras
+    , dependent-sum-template
     , IntervalMap
     , lens
+    , monoidal-containers
     , mtl
     , obelisk-route
     , rhyolite-common
+    , reflex
     , semialign
     , text
+    , these
     , witherable
   default-extensions:
     ConstraintKinds

@@ -16,14 +16,21 @@ library
     , constraints-extras
     , exceptions
     , gargoyle-postgresql-connect
+    , IntervalMap
     , frontend
     , lens
+    , monoidal-containers
+    , mtl
     , obelisk-backend
     , obelisk-route
     , postgresql-simple
+    , reflex
     , resource-pool
+    , rhyolite-common
     , rhyolite-backend
     , safe-exceptions
+    , snap-core
+    , witherable
   exposed-modules:
     Backend
   other-modules:
@@ -67,3 +74,4 @@ executable backend
     , common
     , frontend
     , obelisk-backend
+  ghc-options: -threaded
