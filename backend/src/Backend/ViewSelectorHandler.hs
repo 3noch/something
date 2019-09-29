@@ -13,7 +13,7 @@ import Data.IntervalMap.Interval (Interval (..))
 import qualified Data.Map.Monoidal as MMap
 import qualified Database.Beam.Postgres as Pg
 
-viewSelectorHandler :: (Eq a, Semigroup a) => (forall x. (forall mode. Transaction mode x) -> IO x) -> ViewSelector a -> IO (View a)
+viewSelectorHandler :: (Eq a, Monoid a) => (forall x. (forall mode. Transaction mode x) -> IO x) -> ViewSelector a -> IO (View a)
 viewSelectorHandler runTransaction vs = if vs == mempty then pure mempty else runTransaction $ do
   translations <- fmap Option $ case getOption $ _viewSelector_translations vs of
     Nothing -> pure Nothing
@@ -31,7 +31,8 @@ viewSelectorHandler runTransaction vs = if vs == mempty then pure mempty else ru
   pure $ View
     { _view_translations = translations
     , _view_verseRanges = (fmap.fmap) fst verses
-    , _view_verses = verses <&> fold . MMap.elems . fmap snd
+    -- TODO: Just look at this. No one wants to read this...let alone understand it. I had to "type hole" my way to this...
+    , _view_verses = verses <&> (\(as, maps) -> fmap (as,) maps) . fold . MMap.elems . fmap (\(a, text) -> ([a], fmap First text))
     }
 
 getVersesInInterval :: TranslationId -> Interval VerseReference -> Transaction mode (MonoidalMap VerseReference Text)

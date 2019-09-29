@@ -72,15 +72,16 @@ appWidget = do
     versesWidget <=< watchVerses $ (defaultTranslation, ) <$> range
     downClicked <- fmap (domEvent Click . fst) $ el' "div" $ text "Down"
     range <- foldDyn ($) (IntervalCO (VerseReferenceT (BookId 1) 1 1) (VerseReferenceT (BookId 1) 3 9999)) $ leftmost
-      [ upClicked $> \(IntervalCO (VerseReferenceT book1 chap1 _) _) ->
-          IntervalCO
-            (if chap1 == 1
-              then VerseReferenceT (BookId $ max 1 (unBookId book1 - 1)) 1 1
-              else VerseReferenceT book1 (chap1 - 1) 1)
-            (VerseReferenceT book1 (chap1 + 3) 9999)
-      , downClicked $> \(IntervalCO (VerseReferenceT book1 chap1 _) _) ->
-          IntervalCO (VerseReferenceT book1 (chap1 + 1) 1) (VerseReferenceT book1 (chap1 + 4) 9999)
-      ]
+     [ upClicked $> \(IntervalCO (VerseReferenceT book1 chap1 _) _) ->
+         IntervalCO
+           (if chap1 == 1
+             then VerseReferenceT (BookId $ max 1 (unBookId book1 - 1)) 1 1
+             else VerseReferenceT book1 (chap1 - 1) 1)
+           (VerseReferenceT book1 (chap1 + 3) 9999)
+     , downClicked $> \(IntervalCO (VerseReferenceT book1 chap1 _) _) ->
+         IntervalCO (VerseReferenceT book1 (chap1 + 1) 1) (VerseReferenceT book1 (chap1 + 4) 9999)
+     ]
+
   pure ()
 
   where
@@ -117,8 +118,8 @@ appWidget = do
         highlightFinished :: Event t (Interval (VerseReference, Int)) = fmapMaybe id $ captureRange <$> current highlightState <@> selectWord
 
       selections <- foldDyn IntervalSet.insert mempty highlightFinished
-      _ <- requestingIdentity $ ffor highlightFinished $ \(ClosedInterval start end) ->
-        public $ PublicRequest_AddTag "test" defaultTranslation start end
+      _ <- requestingIdentity $ ffor highlightFinished $ \(ClosedInterval start end) -> -- TODO: Partial match
+        public $ PublicRequest_AddTag $ TagOccurrence "test" defaultTranslation start end
       pure ()
 
 watchTranslations
@@ -136,4 +137,4 @@ watchVerses rng = do
   result <- watchViewSelector $ ffor rng $ \(translationId, interval) -> mempty
     { _viewSelector_verseRanges = MMap.singleton translationId $ MMap.singleton interval 1 }
   pure $ ffor2 rng result $ \(translationId, _interval) result' -> -- TODO: Filter out verses that fit interval
-    result' ^? view_verses . ix translationId
+    (fmap.fmap) (getFirst . snd) $ result' ^? view_verses . ix translationId

@@ -3,6 +3,7 @@
 {-# LANGUAGE FlexibleInstances #-}
 {-# LANGUAGE TemplateHaskell #-}
 {-# LANGUAGE UndecidableInstances #-} -- For deriveJSONGADT
+{-# LANGUAGE QuantifiedConstraints #-}
 
 {-# OPTIONS_GHC -fno-warn-orphans #-}
 
@@ -17,14 +18,13 @@ import qualified Data.Align as Align
 import Data.Aeson.TH (deriveJSON)
 import Data.Aeson.GADT.TH (deriveJSONGADT)
 import Data.Constraint.Extras.TH (deriveArgDict)
-import Data.GADT.Show.TH (deriveGShow)
-import Data.IntervalSet (IntervalSet)
-import qualified Data.IntervalSet as IntervalSet
+import Data.IntervalMap.Generic.Strict (IntervalMap)
+import qualified Data.IntervalMap.Generic.Strict as IntervalMap
 import Data.IntervalMap.Interval (Interval (..))
 import qualified Data.Map as Map
 import qualified Data.Map.Merge.Lazy as Map
 import qualified Data.Map.Monoidal as MMap
-import Data.Semigroup (First)
+import Data.Semigroup (First (..))
 import Data.Witherable (Witherable (wither))
 import Data.MonoidMap (MonoidMap)
 import Reflex.Query.Class (Query (QueryResult, crop), SelectedCount (..))
@@ -34,8 +34,16 @@ import Rhyolite.App (PositivePart (positivePart), standardPositivePart)
 import Common.Prelude
 import Common.Schema
 
+data TagOccurrence = TagOccurrence
+  { _tagOccurrence_name :: !Text
+  , _tagOccurrence_translation :: !TranslationId
+  , _tagOccurrence_start :: !(VerseReference, Int)
+  , _tagOccurrence_end :: !(VerseReference, Int)
+  } deriving (Eq, Generic, Ord, Show)
+deriveJSON Json.defaultOptions 'TagOccurrence
+
 data PublicRequest a where
-  PublicRequest_AddTag :: Text -> TranslationId -> (VerseReference, Int) -> (VerseReference, Int) -> PublicRequest ()
+  PublicRequest_AddTag :: !TagOccurrence -> PublicRequest ()
 deriving instance Show a => Show (PublicRequest a)
 fmap concat $ sequence
   [ deriveJSONGADT ''PublicRequest
@@ -144,7 +152,7 @@ instance (Monoid a, Eq a) => Query (ViewSelector a) where
   crop vs v = View
     { _view_translations = if null $ _viewSelector_translations vs then mempty else _view_translations v
     , _view_verseRanges = verseRanges
-    , _view_verses = cropVerses verseRanges (_view_verses v)
+    , _view_verses = rederiveVerses verseRanges (_view_verses v)
     }
     where
       verseRanges = croppedIntersectionWith (croppedIntersectionWith const) (_viewSelector_verseRanges vs) (_view_verseRanges v)
@@ -159,41 +167,43 @@ croppedIntersectionWith f (MMap.MonoidalMap m) (MMap.MonoidalMap m') = MMap.Mono
     m
     m'
 
-cropVerses
-  :: (Ord k, Monoid a)
-  => MonoidalMap k (MonoidalMap (Interval VerseReference) b)
-  -> MonoidalMap k (MonoidalMap VerseReference a)
-  -> MonoidalMap k (MonoidalMap VerseReference a)
-cropVerses verseRanges verses = flip MMap.mapWithKey verses $ \k v ->
+rederiveVerses
+  :: forall k a b. (Ord k)
+  => MonoidalMap k (MonoidalMap (Interval VerseReference) a)
+  -> MonoidalMap k (MonoidalMap VerseReference (b, First Text))
+  -> MonoidalMap k (MonoidalMap VerseReference ([a], First Text))
+rederiveVerses verseRanges verses = flip MMap.mapWithKey verses $ \k v ->
   let
-    ranges :: IntervalSet (Interval VerseReference) =
-      maybe mempty (IntervalSet.fromDistinctAscList . map fst . MMap.toAscList) $ MMap.lookup k verseRanges
-  in if null ranges then mempty else MMap.filterWithKey (\ref _ -> not $ null $ ranges `IntervalSet.containing` ref) v
-
-
+    ranges :: IntervalMap (Interval VerseReference) a =
+      maybe mempty (IntervalMap.fromDistinctAscList . MMap.toAscList) $ MMap.lookup k verseRanges
+  in if null ranges then mempty else flip MMap.mapMaybeWithKey v $ \ref (_, text) ->
+    let correspondingRanges = ranges `IntervalMap.containing` ref
+    in if null correspondingRanges then Nothing else Just (IntervalMap.elems correspondingRanges, text)
 
 data View a = View
   { _view_translations :: !(Option (a, MonoidalMap TranslationId (First Translation)))
   , _view_verseRanges :: !(MonoidalMap TranslationId (MonoidalMap (Interval VerseReference) a))
-  , _view_verses :: !(MonoidalMap TranslationId (MonoidalMap VerseReference Text))
+  , _view_verses :: !(MonoidalMap TranslationId (MonoidalMap VerseReference ([a], First Text)))
   }
   deriving (Eq, Foldable, Functor, Generic)
 deriveJSON Json.defaultOptions 'View
 makeLenses 'View
-instance Semigroup a => Semigroup (View a) where
+instance Monoid a => Semigroup (View a) where
   a <> b = View
     { _view_translations = _view_translations a <> _view_translations b
-    , _view_verseRanges = _view_verseRanges a <> _view_verseRanges b
-    , _view_verses = _view_verses a <> _view_verses b
+    , _view_verseRanges = verseRanges
+    , _view_verses = rederiveVerses verseRanges (_view_verses a <> _view_verses b)
     }
-instance Semigroup a => Monoid (View a) where
+    where
+      verseRanges = _view_verseRanges a <> _view_verseRanges b
+instance Monoid a => Monoid (View a) where
   mempty = View mempty mempty mempty
   mappend = (<>)
 instance Filterable View where
   mapMaybe f x = View
     { _view_translations = mapMaybeView f (_view_translations x)
     , _view_verseRanges = verseRanges
-    , _view_verses = cropVerses verseRanges (_view_verses x)
+    , _view_verses = rederiveVerses verseRanges (_view_verses x)
     }
     where
       verseRanges = mapMaybe2Deep f $ _view_verseRanges x
@@ -211,12 +221,3 @@ restrictKeys = coerce (Map.restrictKeys :: Map k v -> Set k -> Map k v)
 
 nothingOnNull :: Foldable f => f a -> Maybe (f a)
 nothingOnNull f = if null f then Nothing else Just f
-
-data Notification a where
-  Notification_NoOp :: Notification ()
-deriving instance Show (Notification a)
-fmap concat $ sequence
-  [ deriveJSONGADT ''Notification
-  , deriveArgDict ''Notification
-  , deriveGShow ''Notification
-  ]
