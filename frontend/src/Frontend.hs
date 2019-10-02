@@ -92,8 +92,9 @@ appWidget = do
             let yellow = "style" =: "background-color: yellow;"
             let blue = "style" =: "background-color: blue;"
             text $ showVerseReference vref
-            dyn_ $ ffor vDyn $ \v -> ifor_ (T.words v) $ \i w ->
-              elDynAttr "span" (ffor selections $ \sels -> if null (IntervalSet.containing sels (vref, i)) then mempty else yellow) $ do
+            vDynUniq <- holdUniqDyn vDyn
+            dyn_ $ ffor vDynUniq $ \v -> ifor_ (T.words v) $ \i w ->
+              elDynAttr "span" (fromUniqDynamic $ ffor selections $ \sels -> if null (IntervalSet.containing sels (vref, i)) then mempty else yellow) $ do
                 (elmnt, _) <- elDynAttr' "a" (ffor highlightState $ \firstWord -> if firstWord == Just (vref, i) then blue else mempty) $ text w
                 text " "
                 tellEvent $ First (vref, i) <$ domEvent Click elmnt
@@ -119,8 +120,8 @@ appWidget = do
 
       let
         tagSpanToInterval (ref1, word1, ref2, word2) = ClosedInterval (ref1, word1) (ref2, word2)
-        selections :: Dynamic t (IntervalSet.IntervalSet (Interval (VerseReference, Int))) =
-          maybe mempty (IntervalSet.fromList . map tagSpanToInterval . toList . fold . MMap.elems) <$> tags
+        selections :: UniqDynamic t (IntervalSet.IntervalSet (Interval (VerseReference, Int))) =
+          maybe mempty (IntervalSet.fromList . map tagSpanToInterval . toList . fold . MMap.elems) <$> uniqDynamic tags
       _ <- requestingIdentity $ ffor highlightFinished $ \(ClosedInterval start end) -> -- TODO: Partial match
         public $ PublicRequest_AddTag $ TagOccurrence "test" defaultTranslation start end
       pure ()
@@ -135,7 +136,8 @@ watchTranslations =
 watchVerses
   :: (HasApp t m, MonadHold t m, MonadFix m)
   => Dynamic t (TranslationId, Interval VerseReference)
-  -> m (Dynamic t (Maybe (MonoidalMap VerseReference Text)), Dynamic t (Maybe (MonoidalMap Text (Set (VerseReference, Int, VerseReference, Int)))))
+  -> m ( Dynamic t (Maybe (MonoidalMap VerseReference Text))
+       , Dynamic t (Maybe (MonoidalMap Text (Set (VerseReference, Int, VerseReference, Int)))))
 watchVerses rng = do
   result <- watchViewSelector $ ffor rng $ \(translationId, interval) -> mempty
     { _viewSelector_verseRanges = MMap.singleton translationId $ MMap.singleton interval 1 }
