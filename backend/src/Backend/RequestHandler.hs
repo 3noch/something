@@ -32,7 +32,7 @@ requestHandler runTransaction =
             insert (_dbTaggedRange db) (insertExpressions
               [ TaggedRangeT
                   { _taggedrangeId = default_
-                  , _taggedrangeFor = val_ $ pk tagT
+                  , _taggedrangeForTag = val_ $ pk tagT
                   , _taggedrangeStart = val_ startRef
                   , _taggedrangeEnd = val_ endRef
                   }
@@ -48,7 +48,7 @@ requestHandler runTransaction =
                   }
               ])
 
-        notify Notification_Tag $ (Added, occurrence)
+        notify Notification_Tag (Added, occurrence)
 
     ApiRequest_Private _key r -> case r of
       PrivateRequest_NoOp -> return ()

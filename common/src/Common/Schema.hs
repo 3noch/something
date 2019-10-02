@@ -19,7 +19,7 @@ data TranslationT f = Translation
  , _translationAbbreviation :: Columnar f Text
  } deriving (Generic, Beamable)
 instance Table TranslationT where
-  data PrimaryKey TranslationT f = TranslationId (Columnar f Int) deriving stock Generic deriving anyclass Beamable
+  data PrimaryKey TranslationT f = TranslationId { unTranslationId :: Columnar f Int } deriving stock Generic deriving anyclass Beamable
   primaryKey = TranslationId . _translationId
 type Translation = TranslationT Identity
 deriving instance Eq Translation
@@ -131,7 +131,7 @@ instance Json.FromJSONKey VerseReference
 -------------------------------------------------------------------------------
 data TaggedRangeT f = TaggedRangeT
   { _taggedrangeId :: Columnar f (SqlSerial Int)
-  , _taggedrangeFor :: PrimaryKey TagT f
+  , _taggedrangeForTag :: PrimaryKey TagT f
   , _taggedrangeStart :: VerseReferenceT f
   , _taggedrangeEnd :: VerseReferenceT f
   } deriving (Generic, Beamable)

@@ -85,7 +85,7 @@ appWidget = do
   pure ()
 
   where
-    versesWidget verses = mdo
+    versesWidget (verses, tags) = mdo
       (_, selectWord) <- fmap (second (fmap getFirst)) $ runEventWriterT $
         listWithKey (fromMaybe mempty . coerce <$> verses) $ \vref vDyn ->
           el "p" $ do
@@ -117,7 +117,10 @@ appWidget = do
 
         highlightFinished :: Event t (Interval (VerseReference, Int)) = fmapMaybe id $ captureRange <$> current highlightState <@> selectWord
 
-      selections <- foldDyn IntervalSet.insert mempty highlightFinished
+      let
+        tagSpanToInterval (ref1, word1, ref2, word2) = ClosedInterval (ref1, word1) (ref2, word2)
+        selections :: Dynamic t (IntervalSet.IntervalSet (Interval (VerseReference, Int))) =
+          maybe mempty (IntervalSet.fromList . map tagSpanToInterval . toList . fold . MMap.elems) <$> tags
       _ <- requestingIdentity $ ffor highlightFinished $ \(ClosedInterval start end) -> -- TODO: Partial match
         public $ PublicRequest_AddTag $ TagOccurrence "test" defaultTranslation start end
       pure ()
@@ -132,9 +135,11 @@ watchTranslations =
 watchVerses
   :: (HasApp t m, MonadHold t m, MonadFix m)
   => Dynamic t (TranslationId, Interval VerseReference)
-  -> m (Dynamic t (Maybe (MonoidalMap VerseReference Text)))
+  -> m (Dynamic t (Maybe (MonoidalMap VerseReference Text)), Dynamic t (Maybe (MonoidalMap Text (Set (VerseReference, Int, VerseReference, Int)))))
 watchVerses rng = do
   result <- watchViewSelector $ ffor rng $ \(translationId, interval) -> mempty
     { _viewSelector_verseRanges = MMap.singleton translationId $ MMap.singleton interval 1 }
-  pure $ ffor2 rng result $ \(translationId, _interval) result' -> -- TODO: Filter out verses that fit interval
-    (fmap.fmap) (getFirst . snd) $ result' ^? view_verses . ix translationId
+  pure $ splitDynPure $ ffor2 rng result $ \(translationId, _interval) result' -> -- TODO: Filter out verses that fit interval?
+    ( (fmap.fmap) (getFirst . snd) $ result' ^? view_verses . ix translationId
+    , (fmap.fmap) MMap.keysSet $ result' ^? view_tags . ix translationId
+    )

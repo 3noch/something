@@ -9,7 +9,6 @@
 
 module Common.App where
 
-import Control.Lens (_1)
 import Control.Lens.TH (makeLenses)
 import Data.Aeson (parseJSON, toJSON)
 import qualified Data.Aeson as Json
@@ -25,6 +24,8 @@ import qualified Data.Map as Map
 import qualified Data.Map.Merge.Lazy as Map
 import qualified Data.Map.Monoidal as MMap
 import Data.Semigroup (First (..))
+import Data.Sequence (Seq)
+import qualified Data.Sequence as Seq
 import Data.Witherable (Witherable (wither))
 import Data.MonoidMap (MonoidMap)
 import Reflex.Query.Class (Query (QueryResult, crop), SelectedCount (..))
@@ -153,6 +154,7 @@ instance (Monoid a, Eq a) => Query (ViewSelector a) where
     { _view_translations = if null $ _viewSelector_translations vs then mempty else _view_translations v
     , _view_verseRanges = verseRanges
     , _view_verses = rederiveVerses verseRanges (_view_verses v)
+    , _view_tags = rederiveTags verseRanges (_view_tags v)
     }
     where
       verseRanges = croppedIntersectionWith (croppedIntersectionWith const) (_viewSelector_verseRanges vs) (_view_verseRanges v)
@@ -167,23 +169,44 @@ croppedIntersectionWith f (MMap.MonoidalMap m) (MMap.MonoidalMap m') = MMap.Mono
     m
     m'
 
+nullToNothing :: Foldable f => f a -> Maybe (f a)
+nullToNothing a = if null a then Nothing else Just a
+
 rederiveVerses
-  :: forall k a b. (Ord k)
-  => MonoidalMap k (MonoidalMap (Interval VerseReference) a)
-  -> MonoidalMap k (MonoidalMap VerseReference (b, First Text))
-  -> MonoidalMap k (MonoidalMap VerseReference ([a], First Text))
-rederiveVerses verseRanges verses = flip MMap.mapWithKey verses $ \k v ->
+  :: forall translationId a b. (Ord translationId)
+  => MonoidalMap translationId (MonoidalMap (Interval VerseReference) a)
+  -> MonoidalMap translationId (MonoidalMap VerseReference (b, First Text))
+  -> MonoidalMap translationId (MonoidalMap VerseReference (Seq a, First Text))
+rederiveVerses verseRanges verses = flip MMap.mapMaybeWithKey verses $ \k v ->
   let
     ranges :: IntervalMap (Interval VerseReference) a =
       maybe mempty (IntervalMap.fromDistinctAscList . MMap.toAscList) $ MMap.lookup k verseRanges
-  in if null ranges then mempty else flip MMap.mapMaybeWithKey v $ \ref (_, text) ->
-    let correspondingRanges = ranges `IntervalMap.containing` ref
-    in if null correspondingRanges then Nothing else Just (IntervalMap.elems correspondingRanges, text)
+  in
+    if null ranges then Nothing else nullToNothing $ flip MMap.mapMaybeWithKey v $ \ref (_, text) ->
+      let correspondingRanges = ranges `IntervalMap.containing` ref
+      in if null correspondingRanges then Nothing else Just (Seq.fromList $ IntervalMap.elems correspondingRanges, text)
+
+rederiveTags
+  :: forall translationId tagName a b. (Ord translationId)
+  => MonoidalMap translationId (MonoidalMap (Interval VerseReference) a)
+  -> MonoidalMap translationId (MonoidalMap tagName (MonoidalMap (VerseReference, Int, VerseReference, Int) b))
+  -> MonoidalMap translationId (MonoidalMap tagName (MonoidalMap (VerseReference, Int, VerseReference, Int) (Seq a)))
+rederiveTags verseRanges tags = flip MMap.mapMaybeWithKey tags $ \translationId tagNames ->
+    let
+      ranges :: IntervalMap (Interval VerseReference) a =
+        maybe mempty (IntervalMap.fromDistinctAscList . MMap.toAscList) $ MMap.lookup translationId verseRanges
+    in
+      if null ranges then Nothing else nullToNothing $ flip MMap.mapMaybeWithKey tagNames $ \_ tagRanges ->
+        nullToNothing $ flip MMap.mapMaybeWithKey tagRanges $ \(ref1, _, ref2, _) _ ->
+          let correspondingRanges = ranges `IntervalMap.intersecting` ClosedInterval ref1 ref2
+          in if null correspondingRanges then Nothing else Just $ Seq.fromList (IntervalMap.elems correspondingRanges)
 
 data View a = View
   { _view_translations :: !(Option (a, MonoidalMap TranslationId (First Translation)))
   , _view_verseRanges :: !(MonoidalMap TranslationId (MonoidalMap (Interval VerseReference) a))
-  , _view_verses :: !(MonoidalMap TranslationId (MonoidalMap VerseReference ([a], First Text)))
+  , _view_verses :: !(MonoidalMap TranslationId (MonoidalMap VerseReference (Seq a, First Text)))
+  -- TODO: This should probably use SemiMap to support deletions.
+  , _view_tags :: !(MonoidalMap TranslationId (MonoidalMap Text (MonoidalMap (VerseReference, Int, VerseReference, Int) (Seq a))))
   }
   deriving (Eq, Foldable, Functor, Generic)
 deriveJSON Json.defaultOptions 'View
@@ -193,17 +216,19 @@ instance Monoid a => Semigroup (View a) where
     { _view_translations = _view_translations a <> _view_translations b
     , _view_verseRanges = verseRanges
     , _view_verses = rederiveVerses verseRanges (_view_verses a <> _view_verses b)
+    , _view_tags = rederiveTags verseRanges (_view_tags a <> _view_tags b)
     }
     where
       verseRanges = _view_verseRanges a <> _view_verseRanges b
 instance Monoid a => Monoid (View a) where
-  mempty = View mempty mempty mempty
+  mempty = View mempty mempty mempty mempty
   mappend = (<>)
 instance Filterable View where
   mapMaybe f x = View
     { _view_translations = mapMaybeView f (_view_translations x)
     , _view_verseRanges = verseRanges
     , _view_verses = rederiveVerses verseRanges (_view_verses x)
+    , _view_tags = rederiveTags verseRanges (_view_tags x)
     }
     where
       verseRanges = mapMaybe2Deep f $ _view_verseRanges x
