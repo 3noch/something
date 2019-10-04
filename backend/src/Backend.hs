@@ -6,9 +6,7 @@ module Backend where
 import Control.Exception.Safe (finally)
 import Obelisk.Backend (Backend (..))
 import Obelisk.Route
-import Data.Witherable (Filterable)
 import qualified Rhyolite.Backend.App as RhyoliteApp
-import Reflex.Query.Class (QueryMorphism (..), SelectedCount)
 import qualified Snap.Core as Snap
 
 import Backend.NotifyHandler (notifyHandler)
@@ -35,12 +33,9 @@ backendRun serve = withDb $ \dbPool -> do
     (requestHandler runTransaction')
     (notifyHandler runTransaction')
     (RhyoliteApp.QueryHandler $ viewSelectorHandler runTransaction')
-    signumQueryMorphism
+    RhyoliteApp.functorFromWire
     RhyoliteApp.standardPipeline
 
   flip finally wsFinalizer $ serve $ \case
     BackendRoute_Missing :/ _ -> Snap.writeText "404 Page not found"
     BackendRoute_Listen :/ _ -> handleListen
-
-signumQueryMorphism :: Filterable q => QueryMorphism (q SelectedCount) (q SelectedCount)
-signumQueryMorphism = QueryMorphism (mapMaybe $ \n -> if n > 0 then Just (signum n) else Nothing) id

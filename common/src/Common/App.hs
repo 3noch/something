@@ -72,10 +72,6 @@ instance Witherable Option where
   wither f (Option x) = Option <$> wither f x
   {-# INLINE wither #-}
 
--- WAT why is this is not already somewhere?
-deriving newtype instance FromJSON SelectedCount
-deriving newtype instance ToJSON SelectedCount
-
 ------------------
 data IntervalCarrierType = IntervalCarrierType_CO | IntervalCarrierType_Closed | IntervalCarrierType_Open | IntervalCarrierType_OC
   deriving (Bounded, Enum, Eq, Generic, Ord, Show)

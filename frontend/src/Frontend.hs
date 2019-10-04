@@ -16,7 +16,7 @@ import Obelisk.Frontend (Frontend (..))
 import Obelisk.Route.Frontend
 import Reflex.Dom.Core
 import Rhyolite.Api (ApiRequest, public)
-import Rhyolite.Frontend.App (RhyoliteWidget, runObeliskRhyoliteWidget, watchViewSelector)
+import Rhyolite.Frontend.App (RhyoliteWidget, functorToWire, runObeliskRhyoliteWidget, watchViewSelector)
 
 import Common.App
 import Common.Route
@@ -42,7 +42,7 @@ runAppWidget ::
   => RoutedT t (R FrontendRoute) (RhyoliteWidget (ViewSelector SelectedCount) (ApiRequest () PublicRequest PrivateRequest) t m) a
   -> RoutedT t (R FrontendRoute) m a
 runAppWidget = runObeliskRhyoliteWidget
-  Cat.id
+  functorToWire
   "common/route"
   checkedFullRouteEncoder
   (BackendRoute_Listen :/ ())
