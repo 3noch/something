@@ -23,6 +23,7 @@ library
     , semialign
     , text
     , these
+    , universe
     , witherable
   default-extensions:
     ConstraintKinds
@@ -51,3 +52,4 @@ library
     Common.Prelude
     Common.Route
     Common.Schema
+    Data.Attoparsec.Text.BibleReference
