@@ -11,8 +11,9 @@ import Data.Attoparsec.Text (Parser, asciiCI, char, choice, decimal, skipWhile)
 import Data.Functor (($>))
 import Data.Functor.Identity (Identity)
 import Data.Text (Text)
-import Data.Universe (Finite, Universe (universe), universeGeneric)
-import GHC.Generics (Generic)
+import Data.Universe (universe)
+
+import Data.Bible
 
 ordinals :: [Parser Int]
 ordinals =
@@ -54,25 +55,8 @@ parseVerse = do
   verse <- optional $ char ':' *> decimal
   pure (chap, verse)
 
-parseReference :: Parser (Canonical Identity, Maybe (Int, Maybe Int))
-parseReference = liftA2 (,) parseCanonicalAny (skipStuff *> optional parseVerse)
-
--- We *could* use http://hackage.haskell.org/package/finite-typelits-0.1.4.2/docs/Data-Finite.html
--- for this but that seems like overkill.
-data Two = Two_1 | Two_2
-  deriving (Bounded, Enum, Eq, Generic, Ord, Show, Read)
-instance Universe Two
-instance Finite Two
-
-data Three = Three_1 | Three_2 | Three_3
-  deriving (Bounded, Enum, Eq, Generic, Ord, Show, Read)
-instance Universe Three
-instance Finite Three
-
-data Four = Four_1 | Four_2 | Four_3 | Four_4
-  deriving (Bounded, Enum, Eq, Generic, Ord, Show, Read)
-instance Universe Four
-instance Finite Four
+parseReference :: Parser (Canon' Identity, Maybe (Int, Maybe Int))
+parseReference = liftA2 (,) parseCanonAny (skipStuff *> optional parseVerse)
 
 parseTwo :: Parser Two
 parseTwo = parseBookIndex 2 >>= \case
@@ -87,161 +71,13 @@ parseThree = parseBookIndex 3 >>= \case
   3 -> pure Three_3
   _ -> fail "expected 1 or 2 or 3"
 
-newtype Ignore a = Ignore ()
-
-type family BookIndex f a where
-  BookIndex Identity a = a
-  BookIndex Ignore a = ()
-  BookIndex f a = f a
-
-data OldTestament f
-  = Genesis
-  | Exodus
-  | Leviticus
-  | Numbers
-  | Deuteronomy
-  | Joshua
-  | Judges
-  | Ruth
-  | Samuel (BookIndex f Two)
-  | Kings (BookIndex f Two)
-  | Chronicles (BookIndex f Two)
-  | Ezra
-  | Nehemiah
-  | Esther
-  | Job
-  | Psalms
-  | Proverbs
-  | Ecclesiastes
-  | SongOfSolomon
-  | Isaiah
-  | Jeremiah
-  | Lamentations
-  | Ezekiel
-  | Daniel
-  | Hosea
-  | Joel
-  | Amos
-  | Obadiah
-  | Jonah
-  | Micah
-  | Nahum
-  | Habakkuk
-  | Zephaniah
-  | Haggai
-  | Zechariah
-  | Malachi
-  deriving (Generic)
-deriving instance Eq (OldTestament Ignore)
-deriving instance Eq (OldTestament Identity)
-deriving instance Ord (OldTestament Ignore)
-deriving instance Ord (OldTestament Identity)
-deriving instance Show (OldTestament Ignore)
-deriving instance Show (OldTestament Identity)
-instance Universe (OldTestament Ignore) where universe = universeGeneric
-instance Finite (OldTestament Ignore)
-instance Universe (OldTestament Identity) where universe = universeGeneric
-instance Finite (OldTestament Identity)
-instance Bounded (OldTestament f) where
-  minBound = Genesis
-  maxBound = Malachi
-
-data NewTestament f
-  = Matthew
-  | Mark
-  | Luke
-  | John
-  | Acts
-  | Romans
-  | Corinthians (BookIndex f Two)
-  | Galatians
-  | Ephesians
-  | Philippians
-  | Colossians
-  | Thessalonians (BookIndex f Two)
-  | Timothy (BookIndex f Two)
-  | Titus
-  | Philemon
-  | Hebrews
-  | James
-  | Peter (BookIndex f Two)
-  | JohnEpistle (BookIndex f Three)
-  | Jude
-  | Revelation
-  deriving (Generic)
-deriving instance Eq (NewTestament Ignore)
-deriving instance Eq (NewTestament Identity)
-deriving instance Ord (NewTestament Ignore)
-deriving instance Ord (NewTestament Identity)
-deriving instance Show (NewTestament Ignore)
-deriving instance Show (NewTestament Identity)
-instance Universe (NewTestament Ignore) where universe = universeGeneric
-instance Finite (NewTestament Ignore)
-instance Universe (NewTestament Identity) where universe = universeGeneric
-instance Finite (NewTestament Identity)
-instance Bounded (NewTestament f) where
-  minBound = Matthew
-  maxBound = Revelation
-
-data Canonical f
-  = Canonical_Old (OldTestament f)
-  | Canonical_New (NewTestament f)
-  deriving (Generic)
-deriving instance Eq (Canonical Ignore)
-deriving instance Eq (Canonical Identity)
-deriving instance Ord (Canonical Ignore)
-deriving instance Ord (Canonical Identity)
-deriving instance Show (Canonical Ignore)
-deriving instance Show (Canonical Identity)
-instance Universe (Canonical Ignore) where universe = universeGeneric
-instance Finite (Canonical Ignore)
-instance Universe (Canonical Identity) where universe = universeGeneric
-instance Finite (Canonical Identity)
-instance Bounded (Canonical f) where
-  minBound = Canonical_Old minBound
-  maxBound = Canonical_New maxBound
-
-data Apocryphal f
-  = Tobit
-  | Judith
-  | AdditionsToEsther
-  | WisdomOfSolomon
-  | Sirach
-  | Ecclesiasticus
-  | LetterOfJeremiah
-  | SongOfThreeYouths
-  | PrayerOfAzariah
-  | Susanna
-  | BelandTheDragon
-  | Maccabees (BookIndex f Four)
-  | Esdras (BookIndex f Two)
-  | PrayerOfManasseh
-  | AdditionalPsalm
-  | PsalmsOfSolomon
-  | EpistleToTheLaodiceans
-  deriving (Generic)
-deriving instance Eq (Apocryphal Ignore)
-deriving instance Eq (Apocryphal Identity)
-deriving instance Ord (Apocryphal Ignore)
-deriving instance Ord (Apocryphal Identity)
-deriving instance Show (Apocryphal Ignore)
-deriving instance Show (Apocryphal Identity)
-instance Universe (Apocryphal Ignore) where universe = universeGeneric
-instance Finite (Apocryphal Ignore)
-instance Universe (Apocryphal Identity) where universe = universeGeneric
-instance Finite (Apocryphal Identity)
-instance Bounded (Apocryphal f) where
-  minBound = Tobit
-  maxBound = EpistleToTheLaodiceans
-
 skipStuff :: Parser ()
 skipStuff = skipWhile (\c -> c == '.' || c == ' ')
 
 bookAbbr :: [Text] -> Parser Text
 bookAbbr xs = skipStuff *> choice (map asciiCI xs)
 
-
-parseOldTestament :: OldTestament Ignore -> Parser (OldTestament Identity)
+parseOldTestament :: OldTestament' Ignore -> Parser (OldTestament' Identity)
 parseOldTestament = \case
   Genesis -> Genesis <$ bookAbbr ["Genesis","Gen","Ge","Gn"]
   Exodus -> Exodus <$ bookAbbr ["Exodus","Exod","Exo","Ex"]
@@ -280,10 +116,10 @@ parseOldTestament = \case
   Zechariah -> Zechariah <$ bookAbbr ["Zechariah","Zech","Zec","Zc"]
   Malachi -> Malachi <$ bookAbbr ["Malachi","Mal","Ml"]
 
-parseOldTestamentAny :: Parser (OldTestament Identity)
+parseOldTestamentAny :: Parser (OldTestament' Identity)
 parseOldTestamentAny = choice $ map parseOldTestament universe
 
-parseNewTestament :: NewTestament Ignore -> Parser (NewTestament Identity)
+parseNewTestament :: NewTestament' Ignore -> Parser (NewTestament' Identity)
 parseNewTestament = \case
   Matthew -> Matthew <$ bookAbbr ["Matthew","Matt","Mt"]
   Mark -> Mark <$ bookAbbr ["Mark","Mar","Mrk","Mk","Mr"]
@@ -307,11 +143,11 @@ parseNewTestament = \case
   Jude -> Jude <$ bookAbbr ["Jude","Jud","Jd"]
   Revelation -> Revelation <$ bookAbbr ["The Revelation","Revelation","Rev","Re"]
 
-parseNewTestamentAny :: Parser (NewTestament Identity)
+parseNewTestamentAny :: Parser (NewTestament' Identity)
 parseNewTestamentAny = choice $ map parseNewTestament universe
 
-parseCanonicalAny :: Parser (Canonical Identity)
-parseCanonicalAny = Canonical_Old <$> parseOldTestamentAny <|> Canonical_New <$> parseNewTestamentAny
+parseCanonAny :: Parser (Canon' Identity)
+parseCanonAny = Canon_Old <$> parseOldTestamentAny <|> Canon_New <$> parseNewTestamentAny
 
   -- ["Tob","Tb"]
   -- ["Jdth","Jdt","Jth"]

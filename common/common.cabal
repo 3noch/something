@@ -53,3 +53,4 @@ library
     Common.Route
     Common.Schema
     Data.Attoparsec.Text.BibleReference
+    Data.Bible
