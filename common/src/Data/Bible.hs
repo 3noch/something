@@ -1,7 +1,6 @@
 {-# LANGUAGE FlexibleInstances #-}
 module Data.Bible where
 
-import Data.Finite (Finite, natToFinite)
 import Data.Functor.Identity (Identity)
 import Data.Proxy (Proxy (..))
 import Data.Universe (Universe (universe), universeGeneric)
@@ -15,32 +14,17 @@ data Two = Two_1 | Two_2
 instance Universe Two
 instance Universe.Finite Two
 
-twoToFinite :: Two -> Finite 2
-twoToFinite Two_1 = natToFinite (Proxy :: Proxy 0)
-twoToFinite Two_2 = natToFinite (Proxy :: Proxy 1)
-
 data Three = Three_1 | Three_2 | Three_3
   deriving (Bounded, Enum, Eq, Generic, Ord, Show, Read)
 instance Universe Three
 instance Universe.Finite Three
-
-threeToFinite :: Three -> Finite 3
-threeToFinite Three_1 = natToFinite (Proxy :: Proxy 0)
-threeToFinite Three_2 = natToFinite (Proxy :: Proxy 1)
-threeToFinite Three_3 = natToFinite (Proxy :: Proxy 2)
 
 data Four = Four_1 | Four_2 | Four_3 | Four_4
   deriving (Bounded, Enum, Eq, Generic, Ord, Show, Read)
 instance Universe Four
 instance Universe.Finite Four
 
-fourToFinite :: Four -> Finite 4
-fourToFinite Four_1 = natToFinite (Proxy :: Proxy 0)
-fourToFinite Four_2 = natToFinite (Proxy :: Proxy 1)
-fourToFinite Four_3 = natToFinite (Proxy :: Proxy 2)
-fourToFinite Four_4 = natToFinite (Proxy :: Proxy 3)
-
--- Used as an index for 'BookIndex' to mean"ignore book indexes".
+-- Used as an index for 'BookIndex' to mean "ignore book indexes".
 newtype Ignore a = Ignore ()
 
 type family BookIndex f a where
@@ -182,7 +166,7 @@ instance Enum (OldTestament' Identity) where
     36 -> Haggai
     37 -> Zechariah
     38 -> Malachi
-    n -> error $"OldTestament has no book at index" <> show n
+    n -> error $ "OldTestament has no book at index " <> show n
 
 type OldTestament = OldTestament' Identity
 
@@ -320,7 +304,7 @@ instance Enum (NewTestament' Identity) where
     24 -> JohnEpistle Three_3
     25 -> Jude
     26 -> Revelation
-    n -> error $"NewTestament has no book at index" <> show n
+    n -> error $ "NewTestament has no book at index " <> show n
 
 type NewTestament = NewTestament' Identity
 
