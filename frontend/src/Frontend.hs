@@ -17,16 +17,21 @@ import Reflex.Dom.Core
 import Rhyolite.Api (ApiRequest, public)
 import Rhyolite.Frontend.App (RhyoliteWidget, functorToWire, runObeliskRhyoliteWidget, watchViewSelector)
 
+import Obelisk.Generated.Static
+
 import Common.App
 import Common.Route
 import Common.Prelude
 import Common.Schema
-import Obelisk.Generated.Static
+import Data.Bible
+
 
 frontend :: Frontend (R FrontendRoute)
 frontend = Frontend
   { _frontend_head = el "title" $ text "Obelisk Minimal Example"
-  , _frontend_body = runAppWidget appWidget
+  , _frontend_body = runAppWidget $ subRoute_ $ \case
+      FrontendRoute_Main -> appWidget (pure (Canon_Old Genesis, Nothing))
+      FrontendRoute_Reference -> appWidget =<< askRoute
   }
 
 runAppWidget ::
@@ -56,8 +61,13 @@ type HasApp t m =
 defaultTranslation :: TranslationId
 defaultTranslation = TranslationId 1
 
-appWidget :: forall m t. (HasApp t m, DomBuilder t m, PostBuild t m, MonadHold t m, MonadFix m) => m ()
-appWidget = do
+appWidget
+  :: forall m t. (HasApp t m, DomBuilder t m, PostBuild t m, MonadHold t m, MonadFix m)
+  => Dynamic t (Canon, Maybe (Int, Maybe Int))
+  -> m ()
+appWidget referenceDyn = do
+  now <- getPostBuild
+
   translations <- watchTranslations
   dyn_ $ ffor translations $ \case
     Nothing -> text "Loading..."
@@ -70,8 +80,11 @@ appWidget = do
   rec
     versesWidget <=< watchVerses $ (defaultTranslation, ) <$> range
     downClicked <- fmap (domEvent Click . fst) $ el' "div" $ text "Down"
+    routeRangeDyn <- holdUniqDyn $ referenceToInterval . referenceToVerseReference <$> referenceDyn
     range <- foldDyn ($) (IntervalCO (VerseReferenceT (BookId 1) 1 1) (VerseReferenceT (BookId 1) 3 9999)) $ leftmost
-     [ upClicked $> \(IntervalCO (VerseReferenceT book1 chap1 _) _) ->
+     [ const <$> current routeRangeDyn <@ now
+     , const <$> updated routeRangeDyn
+     , upClicked $> \(IntervalCO (VerseReferenceT book1 chap1 _) _) ->
          IntervalCO
            (if chap1 == 1
              then VerseReferenceT (BookId $ max 1 (unBookId book1 - 1)) 1 1
@@ -84,6 +97,17 @@ appWidget = do
   pure ()
 
   where
+    referenceToVerseReference :: (Canon, Maybe (Int, Maybe Int)) -> VerseReference
+    referenceToVerseReference (b, verseChap) = VerseReferenceT (BookId $ fromEnum b + 1) chap verse
+      where
+        chap = maybe 1 fst verseChap
+        verse = fromMaybe 1 $ snd =<< verseChap
+
+    referenceToInterval :: VerseReference -> Interval VerseReference
+    referenceToInterval (VerseReferenceT (BookId b) c _) = IntervalCO
+      (VerseReferenceT (BookId b) (max 1 $ c - 1) 1)
+      (VerseReferenceT (BookId b) (c + 1) 9999)
+
     versesWidget (verses, tags) = mdo
       (_, selectWord) <- fmap (second (fmap getFirst)) $ runEventWriterT $
         listWithKey (fromMaybe mempty . coerce <$> verses) $ \vref vDyn ->
