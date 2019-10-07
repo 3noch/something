@@ -16,7 +16,8 @@ import Backend.Transaction (Transaction, runTransaction)
 import Backend.ViewSelectorHandler (viewSelectorHandler)
 import Common.Prelude
 import Common.Route (BackendRoute (..), FrontendRoute, fullRouteEncoder)
-import Unsafe.Coerce (unsafeCoerce)
+
+import Data.Attoparsec.Text.BibleReference
 
 backend :: Backend BackendRoute FrontendRoute
 backend = Backend
@@ -29,7 +30,7 @@ backendRun serve = withDb $ \dbPool -> do
   let
     runTransaction' :: Transaction mode a -> IO a
     runTransaction' = runTransaction dbPool
-  (handleListen, wsFinalizer) <- RhyoliteApp.serveDbOverWebsockets (unsafeCoerce dbPool {- To avoid importing groundhog -})
+  (handleListen, wsFinalizer) <- RhyoliteApp.serveDbOverWebsockets (RhyoliteApp.convertPostgresPool dbPool)
     (requestHandler runTransaction')
     (notifyHandler runTransaction')
     (RhyoliteApp.QueryHandler $ viewSelectorHandler runTransaction')

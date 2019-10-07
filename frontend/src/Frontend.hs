@@ -9,7 +9,6 @@ import Data.IntervalMap.Interval (Interval (..))
 import qualified Data.Map.Monoidal as MMap
 import Data.Semigroup (First (..))
 import qualified Data.Text as T
-import qualified Control.Category as Cat
 import Control.Monad.Fix (MonadFix)
 import Obelisk.Configs (HasConfigs (getConfig))
 import Obelisk.Frontend (Frontend (..))

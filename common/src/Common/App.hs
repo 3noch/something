@@ -102,9 +102,11 @@ instance ToJSON k => Json.ToJSONKey (Interval k)
 instance FromJSON k => Json.FromJSONKey (Interval k)
 ------------------
 
+nullToNothing :: Foldable f => f a -> Maybe (f a)
+nullToNothing a = if null a then Nothing else Just a
+
 mapMaybe2Deep :: (Foldable t, Filterable f, Filterable t) => (a -> Maybe b) -> f (t a) -> f (t b)
-mapMaybe2Deep f = mapMaybe (notNull . mapMaybe f)
-  where notNull gb = if null gb then Nothing else Just gb
+mapMaybe2Deep f = mapMaybe (nullToNothing . mapMaybe f)
 
 data ViewSelector a = ViewSelector
   { _viewSelector_translations :: !(Option a)
@@ -164,9 +166,6 @@ croppedIntersectionWith f (MMap.MonoidalMap m) (MMap.MonoidalMap m') = MMap.Mono
     (Map.zipWithMaybeMatched (\_ a v -> if a == mempty then Nothing else Just (f a v)))
     m
     m'
-
-nullToNothing :: Foldable f => f a -> Maybe (f a)
-nullToNothing a = if null a then Nothing else Just a
 
 rederiveVerses
   :: forall translationId a b. (Ord translationId)
@@ -238,7 +237,3 @@ mapMaybeView f = mapMaybe ((_1 :: (a -> Maybe b) -> (a, v) -> Maybe (b, v)) f)
 
 restrictKeys :: forall k v. Ord k => MonoidalMap k v -> Set k -> MonoidalMap k v
 restrictKeys = coerce (Map.restrictKeys :: Map k v -> Set k -> Map k v)
-
-
-nothingOnNull :: Foldable f => f a -> Maybe (f a)
-nothingOnNull f = if null f then Nothing else Just f

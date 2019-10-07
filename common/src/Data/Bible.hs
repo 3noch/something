@@ -1,8 +1,8 @@
 {-# LANGUAGE FlexibleInstances #-}
+{-# LANGUAGE LambdaCase #-}
 module Data.Bible where
 
 import Data.Functor.Identity (Identity)
-import Data.Proxy (Proxy (..))
 import Data.Universe (Universe (universe), universeGeneric)
 import qualified Data.Universe as Universe
 import GHC.Generics (Generic)
@@ -171,7 +171,7 @@ instance Enum (OldTestament' Identity) where
 type OldTestament = OldTestament' Identity
 
 oldTestamentToString :: (Two -> String -> String) -> OldTestament' Identity -> String
-oldTestamentToString showTwo x = case x of
+oldTestamentToString showTwo = \case
   Genesis -> "Genesis"
   Exodus -> "Exodus"
   Leviticus -> "Leviticus"
@@ -313,7 +313,7 @@ newTestamentToString
   -> (Three -> String -> String)
   -> NewTestament' Identity
   -> String
-newTestamentToString showTwo showThree x = case x of
+newTestamentToString showTwo showThree = \case
   Matthew -> "Matthew"
   Mark -> "Mark"
   Luke -> "Luke"

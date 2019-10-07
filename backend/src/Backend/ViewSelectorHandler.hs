@@ -44,12 +44,10 @@ viewSelectorHandler runTransaction vs = if vs == mempty then pure mempty else ru
     -- TODO: Just look at this. No one wants to read this...let alone understand it. I had to "type hole" my way to this...
     , _view_verses = flip fmap verses
         $   fmap (\(a, text) -> (a, fmap First text))
-        >>> MMap.elems
         >>> fold
         >>> (\(as, maps) -> (Seq.singleton as,) <$> maps)
     , _view_tags = flip fmap tags
-        $   MMap.elems
-        >>> fold
+        $   fold
         >>> (\(a, map_) -> MMap.fromSet (const $ Seq.singleton a) <$> map_)
     }
 
