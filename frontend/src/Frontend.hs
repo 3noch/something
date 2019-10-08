@@ -5,7 +5,7 @@
 
 module Frontend where
 
-import Control.Lens (ix, (^?), (^.))
+import Control.Lens (ix, (^?))
 import qualified Data.IntervalSet as IntervalSet
 import Data.IntervalMap.Interval (Interval (..))
 import qualified Data.Map.Monoidal as MMap
@@ -150,22 +150,12 @@ appWidget
 appWidget referenceDyn = do
   now <- getPostBuild
 
-  upClicked <- fmap (domEvent Click . fst) $ el' "div" $ text "Up"
   rec
     versesWidget <=< watchVerses $ (defaultTranslation, ) <$> range
-    downClicked <- fmap (domEvent Click . fst) $ el' "div" $ text "Down"
     routeRangeDyn <- holdUniqDyn $ referenceToInterval . referenceToVerseReference <$> referenceDyn
     range <- foldDyn ($) (IntervalCO (VerseReferenceT (BookId 1) 1 1) (VerseReferenceT (BookId 1) 3 9999)) $ leftmost
      [ const <$> current routeRangeDyn <@ now
      , const <$> updated routeRangeDyn
-     , upClicked $> \(IntervalCO (VerseReferenceT book1 chap1 _) _) ->
-         IntervalCO
-           (if chap1 == 1
-             then VerseReferenceT (BookId $ max 1 (unBookId book1 - 1)) 1 1
-             else VerseReferenceT book1 (chap1 - 1) 1)
-           (VerseReferenceT book1 (chap1 + 3) 9999)
-     , downClicked $> \(IntervalCO (VerseReferenceT book1 chap1 _) _) ->
-         IntervalCO (VerseReferenceT book1 (chap1 + 1) 1) (VerseReferenceT book1 (chap1 + 4) 9999)
      ]
 
   pure ()
@@ -187,8 +177,8 @@ appWidget referenceDyn = do
         listWithKey (fromMaybe mempty . coerce <$> verses) $ \vref vDyn ->
           el "p" $ do
             let yellow = "style" =: "background-color: yellow;"
-            let blue = "style" =: "background-color: blue;"
-            text $ showVerseReference vref
+            let blue = "style" =: "background-color: grey;"
+            text $ T.pack (show $ _versereferenceChapter vref) <> ":" <> T.pack (show $ _versereferenceVerse vref) <> " "
             vDynUniq <- holdUniqDyn vDyn
             dyn_ $ ffor vDynUniq $ \v -> ifor_ (T.words v) $ \i w ->
               elDynAttr "span" (fromUniqDynamic $ ffor selections $ \sels -> if null (IntervalSet.containing sels (vref, i)) then mempty else yellow) $ do
