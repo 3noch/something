@@ -8,6 +8,7 @@ library
   build-depends:
       aeson
     , aeson-gadt-th
+    , attoparsec
     , base
     , beam-core
     , containers
