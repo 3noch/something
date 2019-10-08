@@ -17,8 +17,6 @@ import Backend.ViewSelectorHandler (viewSelectorHandler)
 import Common.Prelude
 import Common.Route (BackendRoute (..), FrontendRoute, fullRouteEncoder)
 
-import Data.Attoparsec.Text.BibleReference
-
 backend :: Backend BackendRoute FrontendRoute
 backend = Backend
   { _backend_run = backendRun

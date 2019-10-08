@@ -51,11 +51,14 @@ checkedFullRouteEncoder = case checkEncoder fullRouteEncoder of
 
 bibleReferenceEncoder :: (Applicative check, MonadError Text parse) => Encoder check parse (Canon, Maybe (Int, Maybe Int)) Text
 bibleReferenceEncoder = unsafeMkEncoder $ EncoderImpl
-  { _encoderImpl_decode = \input -> case parseOnly (parseReference <* endOfInput) (T.strip input) of
+  { _encoderImpl_decode = \input -> case parseBibleReference input of
     Right x -> pure x
-    Left e -> throwError $ "Failed to understand Bible reference " <> input <> ": " <> T.pack e
+    Left e -> throwError $ "Failed to understand Bible reference " <> input <> ": " <> e
   , _encoderImpl_encode = T.pack . showBibleReference
   }
+
+parseBibleReference :: Text -> Either Text (Canon, Maybe (Int, Maybe Int))
+parseBibleReference input = first T.pack $ parseOnly (parseReference <* endOfInput) (T.strip input)
 
 showBibleReference :: (Canon, Maybe (Int, Maybe Int)) -> String
 showBibleReference (b, chapVerse) = bookName <> maybe "" showChapVerse chapVerse

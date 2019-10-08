@@ -1,16 +1,18 @@
 {-# LANGUAGE FlexibleContexts #-}
 {-# LANGUAGE RecursiveDo #-}
+{-# LANGUAGE DataKinds #-}
+{-# LANGUAGE TypeApplications #-}
 
 module Frontend where
 
-import Control.Lens
+import Control.Lens (ix, (^?), (^.))
 import qualified Data.IntervalSet as IntervalSet
 import Data.IntervalMap.Interval (Interval (..))
 import qualified Data.Map.Monoidal as MMap
 import Data.Semigroup (First (..))
 import qualified Data.Text as T
 import Control.Monad.Fix (MonadFix)
-import Obelisk.Configs (HasConfigs (getConfig))
+import Obelisk.Configs (HasConfigs)
 import Obelisk.Frontend (Frontend (..))
 import Obelisk.Route.Frontend
 import Reflex.Dom.Core
@@ -28,11 +30,19 @@ import Data.Bible
 
 frontend :: Frontend (R FrontendRoute)
 frontend = Frontend
-  { _frontend_head = el "title" $ text "Obelisk Minimal Example"
-  , _frontend_body = runAppWidget $ subRoute_ $ \case
+  { _frontend_head = headSection
+  , _frontend_body = runAppWidget $ skeleton $ subRoute_ $ \case
       FrontendRoute_Main -> appWidget (pure (Canon_Old Genesis, Nothing))
       FrontendRoute_Reference -> appWidget =<< askRoute
   }
+
+headSection :: DomBuilder t m => m ()
+headSection = do
+  elAttr "meta" ("charset"=:"utf-8") blank
+  elAttr "meta" ("name"=:"viewport" <> "content"=:"width=device-width, initial-scale=1") blank
+  elAttr "link" ("rel"=:"stylesheet" <> "type"=:"text/css" <> "href"=: static @"css/bulma.css") blank
+  el "title" $ text "Something"
+  elAttr "script" ("defer"=:"defer"<> "src"=:"https://use.fontawesome.com/releases/v5.3.1/js/all.js") blank
 
 runAppWidget ::
   ( HasConfigs m
@@ -51,6 +61,78 @@ runAppWidget = runObeliskRhyoliteWidget
   checkedFullRouteEncoder
   (BackendRoute_Listen :/ ())
 
+
+skeleton
+  :: (DomBuilder t m, MonadHold t m, PostBuild t m, MonadFix m, SetRoute t (R FrontendRoute) m)
+  => m a -> m a
+skeleton body = do
+  navBar
+  a <- elClass "section" "section" body
+  footer
+  pure a
+
+
+navBar
+  :: (DomBuilder t m, MonadHold t m, PostBuild t m, MonadFix m, SetRoute t (R FrontendRoute) m)
+  => m ()
+navBar =
+  elAttr "nav" ("class"=:"navbar" <> "role"=:"navigation" <> "aria-label"=:"main navigation") $ do
+    divClass "navbar-brand" $
+      elAttr "a" ("class"=:"navbar-item" <> "href"=:"https://bulma.io") $ text "Tree of Life"
+        -- elAttr "img" ("src"=:"https://bulma.io/images/bulma-logo.png" <> "width"=:"112" <> "height"=:"28") blank
+
+    (burgerEl, ()) <- elAttr' "a" ("role"=:"button" <> "class"=:"navbar-burger burger" <> "aria-label"=:"menu") $ do
+      let ln = elAttr "span" ("aria-hidden"=:"true") blank
+      ln *> ln *> ln
+
+    menuIsActive <- toggle False $ domEvent Click burgerEl
+
+    elDynAttr "div" (ffor menuIsActive $ \active -> "class"=:("navbar-menu" <> if active then " is-active" else "")) $ do
+      divClass "navbar-start" $ do
+        elClass "a" "navbar-item" $ text "Home"
+        elClass "a" "navbar-item" $ text "Documentation"
+        divClass "navbar-item has-dropdown is-hoverable" $ do
+          elClass "a" "navbar-link" $ text "More"
+
+          divClass "navbar-dropdown" $ do
+            elClass "a" "navbar-item" $ text "About"
+            elClass "a" "navbar-item" $ text "Jobs"
+            elClass "a" "navbar-item" $ text "Contact"
+
+            elClass "hr" "navbar-divider" blank
+            elClass "a" "navbar-item" $ text "Report an issue"
+        divClass "navbar-item" $
+          divClass "field has-addons" $ do
+            (refValue, enterPressed) <- elClass "p" "control" $ do
+              inputEl <- inputElement $ def & initialAttributes .~ ("class"=:"input" <> "type"=:"text" <> "placeholder"=:"Go to reference")
+              pure (value inputEl, keypress Enter $ _inputElement_element inputEl)
+
+            goClicked <- elClass "p" "control" $ do
+              (buttonEl, ()) <- elAttr' "button" ("class"=:"button" <> "type"=:"button") $
+                text "Go"
+              pure $ domEvent Click buttonEl
+
+            let goToValidRef =
+                  mapMaybe (either (const Nothing) Just . parseBibleReference) $ current refValue
+                  <@ leftmost [goClicked, enterPressed]
+            setRoute $ (FrontendRoute_Reference :/) <$> goToValidRef
+
+      divClass "navbar-end" $
+        divClass "navbar-item" $
+          divClass "buttons" $ do
+            elClass "a" "button is-primary" $
+              el "strong" $ text "Sign up"
+            elClass "a" "button is-light" $ text "Log in"
+
+footer :: DomBuilder t m => m ()
+footer =
+  elClass "footer" "footer" $
+    divClass "content has-text-centered" $
+      el "p" $ do
+        el "strong" (text "Tree of Life") *> text " by Roy Almasy and Elliot Cameron. The source code is licensed "
+        elAttr "a" ("href"=:"http://opensource.org/licenses/mit-license.php") (text "MIT")
+        text ". The website content is licensed " *> elAttr "a" ("href"=:"http://creativecommons.org/licenses/by-nc-sa/4.0/") (text "CC BY NC SA 4.0")
+
 type HasApp t m =
   ( MonadQuery t (ViewSelector SelectedCount) m
   , Requester t m
@@ -67,14 +149,6 @@ appWidget
   -> m ()
 appWidget referenceDyn = do
   now <- getPostBuild
-
-  translations <- watchTranslations
-  dyn_ $ ffor translations $ \case
-    Nothing -> text "Loading..."
-    Just ts -> do
-      text "Translations"
-      el "ol" $
-        for_ ts $ \t -> el "li" $ text $ _translationName t
 
   upClicked <- fmap (domEvent Click . fst) $ el' "div" $ text "Up"
   rec
