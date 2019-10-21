@@ -1,0 +1,34 @@
+cradle:
+  direct:
+    arguments:
+      - -Wunused-binds
+      - -Wunused-imports
+      - -Worphans
+      - -Wunused-matches
+      - -Wincomplete-patterns
+      - -XBangPatterns
+      - -XConstraintKinds
+      - -XDeriveFoldable
+      - -XDeriveFunctor
+      - -XDeriveGeneric
+      - -XDerivingStrategies
+      - -XEmptyDataDecls
+      - -XGADTs
+      - -XGeneralizedNewtypeDeriving
+      - -XHaskell98
+      - -XLambdaCase
+      - -XMultiParamTypeClasses
+      - -XNamedFieldPuns
+      - -XOverloadedStrings
+      - -XPolyKinds
+      - -XRankNTypes
+      - -XRecordWildCards
+      - -XScopedTypeVariables
+      - -XStandaloneDeriving
+      - -XTupleSections
+      - -XTypeApplications
+      - -XTypeFamilies
+      - -XViewPatterns
+      - -ibackend/src
+      - -icommon/src
+      - -ifrontend/src
