@@ -6,11 +6,19 @@
 module Frontend where
 
 import Control.Lens (ix, (^?))
+import qualified Data.IntervalMap.Generic.Strict as IntervalMap
+import Data.IntervalMap.Generic.Strict (IntervalMap)
 import qualified Data.IntervalSet as IntervalSet
 import Data.IntervalMap.Interval (Interval (..))
+import Data.List (sortOn, foldl')
 import qualified Data.Map.Monoidal as MMap
+import Data.Ord (Down (..))
 import Data.Semigroup (First (..))
+import qualified Data.Set as Set
+import Data.Sequence (Seq)
+import qualified Data.Sequence as Seq
 import qualified Data.Text as T
+import Data.These (These (This, That, These))
 import Control.Monad.Fix (MonadFix)
 import Obelisk.Configs (HasConfigs)
 import Obelisk.Frontend (Frontend (..))
@@ -40,9 +48,10 @@ headSection :: DomBuilder t m => m ()
 headSection = do
   elAttr "meta" ("charset"=:"utf-8") blank
   elAttr "meta" ("name"=:"viewport" <> "content"=:"width=device-width, initial-scale=1") blank
-  elAttr "link" ("rel"=:"stylesheet" <> "type"=:"text/css" <> "href"=: static @"css/bulma.css") blank
+  elAttr "link" ("rel"=:"stylesheet" <> "type"=:"text/css" <> "href"=:static @"css/bulma.css") blank
   el "title" $ text "Something"
-  elAttr "script" ("defer"=:"defer"<> "src"=:"https://use.fontawesome.com/releases/v5.3.1/js/all.js") blank
+  elAttr "script" ("defer"=:"defer" <> "src"=:"https://use.fontawesome.com/releases/v5.3.1/js/all.js") blank
+  elAttr "script" ("defer"=:"defer" <> "src"=:static @"js/shims.js") blank
 
 runAppWidget ::
   ( HasConfigs m
@@ -143,6 +152,86 @@ type HasApp t m =
 defaultTranslation :: TranslationId
 defaultTranslation = TranslationId 1
 
+data IntervalEndpointType = Closed | Open deriving (Bounded, Enum, Eq, Generic, Ord, Show)
+
+data IntervalEndpointPosition = Starting | Ending deriving (Bounded, Enum, Eq, Generic, Ord, Show)
+
+data IntervalEndpoint a = IntervalEndpoint
+  { _intervalEndpoint_value :: !a
+  , _intervalEndpoint_type :: !IntervalEndpointType
+  , _intervalEndpoint_position :: !IntervalEndpointPosition
+  }
+  deriving (Eq, Generic, Show)
+instance Ord a => Ord (IntervalEndpoint a) where
+  compare (IntervalEndpoint a' aType _) (IntervalEndpoint b' bType _) = case ((a', aType), (b', bType)) of
+    ((a, Closed), (b, Open)) | a == b -> LT
+    ((a, Open), (b, Closed)) | a == b -> GT
+    ((a, _), (b, _)) -> compare a b
+
+intervalToEndpoints :: Interval a -> (IntervalEndpoint a, IntervalEndpoint a)
+intervalToEndpoints = \case
+  IntervalCO a b -> (IntervalEndpoint a Closed Starting, IntervalEndpoint b Open Ending)
+  IntervalOC a b -> (IntervalEndpoint a Open Starting, IntervalEndpoint b Closed Ending)
+  ClosedInterval a b -> (IntervalEndpoint a Closed Starting, IntervalEndpoint b Closed Ending)
+  OpenInterval a b -> (IntervalEndpoint a Open Starting, IntervalEndpoint b Open Ending)
+
+endpointsToInterval :: (IntervalEndpoint a, IntervalEndpoint a) -> Interval a
+endpointsToInterval = \case
+  (IntervalEndpoint a Closed _, IntervalEndpoint b Open _) -> IntervalCO a b
+  (IntervalEndpoint a Open _, IntervalEndpoint b Closed _) -> IntervalOC a b
+  (IntervalEndpoint a Closed _, IntervalEndpoint b Closed _) -> ClosedInterval a b
+  (IntervalEndpoint a Open _, IntervalEndpoint b Open _) -> OpenInterval a b
+
+nonOverlapping :: forall k v. (Ord k, Ord v) => IntervalMap (Interval k) v -> IntervalMap (Interval k) (Set v)
+nonOverlapping xs | null xs = mempty
+nonOverlapping xs = IntervalMap.fromAscList $ map (first endpointsToInterval) $ toList $ snd $ foldl'
+  (\(active, intervals) ((this, v), (next, _)) ->
+    let
+      active' = case _intervalEndpoint_position this of
+        Starting -> Set.insert v active
+        Ending -> Set.delete v active
+    in (active', intervals Seq.:|> ((this, next), active'))
+  )
+  (mempty, mempty)
+  (zip endpoints (tail endpoints))
+  where
+    endpoints :: [(IntervalEndpoint k, v)] = sortOn fst $ fold $ do
+      (interval, v) <- IntervalMap.toList xs
+      let (left, right) = intervalToEndpoints interval
+      pure [(left, v), (right, v)]
+
+verseWords :: Text -> Seq Text
+verseWords = Seq.fromList . filter (not . T.null) . T.split (' '==)
+
+verseWordsToInterval :: VerseReference -> Seq Text -> Interval (VerseReference, Int)
+verseWordsToInterval vref ws = ClosedInterval (vref, 0) (vref, length ws)
+
+type WordRangeMap a = IntervalMap (Interval (VerseReference, Int)) a
+
+versesToRanges :: MonoidalMap VerseReference Text -> WordRangeMap ()
+versesToRanges
+  =   fmap verseWords
+  >>> MMap.mapWithKey verseWordsToInterval
+  >>> MMap.toAscList
+  >>> map (\(_, v) -> (v, ()))
+  >>> IntervalMap.fromAscList
+
+tagsToRanges :: MonoidalMap Text (Set (VerseReference, Int, VerseReference, Int)) -> WordRangeMap Text
+tagsToRanges tagMap = IntervalMap.fromList
+  [ (ClosedInterval (vref1, w1) (vref2, w2), t)
+  | (t, ranges) <- MMap.toList tagMap
+  , (vref1, w1, vref2, w2) <- toList ranges
+  ]
+
+combineTagsAndVerses
+  :: WordRangeMap Text
+  -> WordRangeMap ()
+  -> WordRangeMap (These Text ())
+combineTagsAndVerses tags verses = IntervalMap.unionWith merge_ (This <$> tags) (That <$> verses)
+  where
+    merge_ (This a) (That b) = These a b
+    merge_ _ _ = error "Impossible"
+
 appWidget
   :: forall m t. (HasApp t m, DomBuilder t m, PostBuild t m, MonadHold t m, MonadFix m)
   => Dynamic t (Canon, Maybe (Int, Maybe Int))
@@ -154,9 +243,9 @@ appWidget referenceDyn = do
     versesWidget <=< watchVerses $ (defaultTranslation, ) <$> range
     routeRangeDyn <- holdUniqDyn $ referenceToInterval . referenceToVerseReference <$> referenceDyn
     range <- foldDyn ($) (IntervalCO (VerseReferenceT (BookId 1) 1 1) (VerseReferenceT (BookId 1) 3 9999)) $ leftmost
-     [ const <$> current routeRangeDyn <@ now
-     , const <$> updated routeRangeDyn
-     ]
+      [ const <$> current routeRangeDyn <@ now
+      , const <$> updated routeRangeDyn
+      ]
 
   pure ()
 
