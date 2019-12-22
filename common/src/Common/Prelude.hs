@@ -1,7 +1,8 @@
 module Common.Prelude (module X) where
 
+import Control.Applicative as X (liftA2)
 import Control.Category as X ((>>>), (<<<))
-import Control.Lens as X (ifor, ifor_, itraverse, itraverse_, preview, set, view, _1, _2, _3, (<&>), (^.), (.~))
+import Control.Lens as X (ifor, ifor_, itraverse, itraverse_, preview, set, view, _1, _2, _3, (<&>), (^.), (.~), (?~))
 import Control.Monad as X ((<=<), (>=>))
 import Control.Monad.IO.Class as X (MonadIO (liftIO))
 import Data.Aeson as X (FromJSON, ToJSON)

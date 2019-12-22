@@ -8,6 +8,7 @@ library
   build-depends:
       base
     , common
+    , containers
     , IntervalMap
     , lens
     , monoidal-containers
@@ -19,6 +20,7 @@ library
     , rhyolite-frontend
     , rhyolite-common
     , text
+    , these
   exposed-modules:
     Frontend
   default-extensions:
