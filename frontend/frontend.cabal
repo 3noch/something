@@ -9,6 +9,9 @@ library
       base
     , common
     , containers
+    , ghcjs-dom
+    , jsaddle
+    , jsaddle-dom
     , IntervalMap
     , lens
     , monoidal-containers
@@ -23,6 +26,8 @@ library
     , these
   exposed-modules:
     Frontend
+  other-modules:
+    Frontend.Selection
   default-extensions:
     ConstraintKinds
     DataKinds

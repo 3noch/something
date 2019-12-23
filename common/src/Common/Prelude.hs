@@ -1,8 +1,8 @@
-module Common.Prelude (module X) where
+module Common.Prelude (module Common.Prelude, module X) where
 
 import Control.Applicative as X (liftA2)
 import Control.Category as X ((>>>), (<<<))
-import Control.Lens as X (ifor, ifor_, itraverse, itraverse_, preview, set, view, _1, _2, _3, (<&>), (^.), (.~), (?~))
+import Control.Lens as X (ifor, ifor_, itraverse, itraverse_, preview, set, view, _1, _2, _3, (<&>), (^.), (.~), (^?), (?~))
 import Control.Monad as X ((<=<), (>=>))
 import Control.Monad.IO.Class as X (MonadIO (liftIO))
 import Data.Aeson as X (FromJSON, ToJSON)
@@ -22,3 +22,8 @@ import Data.Text as X (Text)
 import Data.Traversable as X (for)
 import Data.Witherable as X (Filterable (mapMaybe))
 import GHC.Generics as X (Generic)
+
+import qualified Data.Text as T
+
+tshow :: Show a => a -> Text
+tshow = T.pack . show

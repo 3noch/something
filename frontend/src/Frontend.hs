@@ -1,11 +1,12 @@
-{-# LANGUAGE FlexibleContexts #-}
-{-# LANGUAGE RecursiveDo #-}
 {-# LANGUAGE DataKinds #-}
+{-# LANGUAGE FlexibleContexts #-}
+{-# LANGUAGE PatternGuards #-}
+{-# LANGUAGE RecursiveDo #-}
 {-# LANGUAGE TypeApplications #-}
 
 module Frontend where
 
-import Control.Lens (ix, (^?))
+import Control.Lens (Prism', ix, prism', re)
 import qualified Data.IntervalMap.Generic.Strict as IntervalMap
 import Data.IntervalMap.Generic.Strict (IntervalMap)
 import qualified Data.IntervalSet as IntervalSet
@@ -26,6 +27,7 @@ import Obelisk.Route.Frontend
 import Reflex.Dom.Core
 import Rhyolite.Api (ApiRequest, public)
 import Rhyolite.Frontend.App (RhyoliteWidget, functorToWire, runObeliskRhyoliteWidget, watchViewSelector)
+import Text.Read (readMaybe)
 
 import Obelisk.Generated.Static
 
@@ -34,6 +36,8 @@ import Common.Route
 import Common.Prelude
 import Common.Schema
 import Data.Bible
+
+import Frontend.Selection (selectionStart)
 
 
 frontend :: Frontend (R FrontendRoute)
@@ -263,11 +267,14 @@ mkNonOverlappingDomSegments verses tags = nonOverlapping filt $ combineTagsAndVe
     filt _ _ = True
 
 appWidget
-  :: forall m t. (HasApp t m, DomBuilder t m, PostBuild t m, MonadHold t m, MonadFix m)
+  :: forall m js t. (HasApp t m, DomBuilder t m, PostBuild t m, MonadHold t m, MonadFix m, Prerender js t m)
   => Dynamic t (Canon, Maybe (Int, Maybe Int))
   -> m ()
 appWidget referenceDyn = do
   now <- getPostBuild
+
+  e <- selectionStart
+  widgetHold_ (text "...") $ ffor e $ \e' -> text $ tshow e'
 
   rec
     (verses, tags) <- watchVerses $ (defaultTranslation, ) <$> range
@@ -300,30 +307,43 @@ appWidget referenceDyn = do
       domSegments' <- maybeDyn $ (liftA2 . liftA2) (,) verses' (Just <$> tags')
       dyn_ $ ffor domSegments' $ \case
         Nothing -> text "Loading..."
-        Just versesTags -> void $ do
+        Just versesTags -> divClass "passage" $ do
           let
             (verses, tags) = splitDynPure versesTags
             wordMap = verseWordMap <$> verses
             domSegments = Map.fromDistinctAscList . IntervalMap.toAscList <$> liftA2 mkNonOverlappingDomSegments verses tags
-          listWithKey domSegments $ \k v -> do
-            -- text $ case fst $ intervalToEndpoints k of
-            --   IntervalEndpoint (VerseReferenceT book chapter verse, 0) Closed Starting -> T.pack (show chapter) <> ":" <> T.pack (show verse) <> " "
-            --   _ -> " "
-            let
-              pleft Closed = "["
-              pleft Open = "("
-              pright Closed = "]"
-              pright Open = ")"
-            text $ case intervalToEndpoints k of
-              (IntervalEndpoint (VerseReferenceT book1 chapter1 verse1, w1) t1 _, IntervalEndpoint (VerseReferenceT book2 chapter2 verse2, w2) t2 _) ->
-                pleft t1 <> T.pack (show chapter1) <> ":" <> T.pack (show verse1) <> "!" <> T.pack (show w1) <> "," <>
-                T.pack (show chapter2) <> ":" <> T.pack (show verse2) <> "!" <> T.pack (show w2) <> pright t2
+          void $ listWithKey domSegments $ \k v -> do
+            let startingEndpoint = fst (intervalToEndpoints k)
+            case startingEndpoint of
+              IntervalEndpoint (VerseReferenceT book chapter verse, 0) Closed _
+                | chapter == 1 && verse == 1 -> el "br" blank *> text " " *> el "strong" (text $ tshow ((\(BookId n) -> n) book) <> ":1")
+                | verse == 1 -> el "br" blank *> text " " *> el "strong" (text $ tshow chapter)
+                | otherwise -> el "br" blank *> text " " *> el "sup" (text $ tshow verse)
+              _ -> blank
             let
               wordsDyn = T.intercalate " " . map snd . IntervalMap.toAscList . (`IntervalMap.intersecting` k) <$> wordMap
               isHighlighted = any (\case This _ -> True; These _ _ -> True; That _ -> False) <$> v
-              styleDyn = ffor isHighlighted $ \hl -> if hl then "style" =: "background-color:yellow;" else mempty
+              styleDyn = ffor isHighlighted $ \hl ->
+                "data-start" =: startingEndpoint ^. re wordStartingEndpointEncoding <>
+                if hl then "style" =: "background-color:yellow;" else mempty
             text " "
             elDynAttr "span" styleDyn $ dynTextStrict wordsDyn
+
+wordStartingEndpointEncoding :: Prism' Text (IntervalEndpoint (VerseReference, Int))
+wordStartingEndpointEncoding = prism'
+  (\(IntervalEndpoint (VerseReferenceT book chapter verse, word) t _) ->
+    T.intercalate ":" $ map (T.pack . show) [(\(BookId n) -> n) book, chapter, verse, case t of Closed -> word; Open -> word + 1]
+  )
+  (\txt -> case T.splitOn ":" txt of
+    [book', chapter', verse', word']
+      | Just book <- read' book'
+      , Just chapter <- read' chapter'
+      , Just verse <- read' verse'
+      , Just word <- read' word'
+      -> Just $ IntervalEndpoint (VerseReferenceT (BookId book) chapter verse, word) Closed Starting
+      where read' = readMaybe . T.unpack
+    _ -> Nothing
+  )
 
 -- | A more efficient version of 'dynText' but with the added requirement that the input 'Dynamic' be strict.
 -- That is, it must have a value at DOM-building time because it's initial value is immediately sampled.
