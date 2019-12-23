@@ -294,10 +294,10 @@ appWidget referenceDyn = do
 
     versesWidget
       :: Dynamic t (Maybe (MonoidalMap VerseReference Text))
-      -> Dynamic t (Maybe (MonoidalMap Text (Set (VerseReference, Int, VerseReference, Int))))
+      -> Dynamic t (MonoidalMap Text (Set (VerseReference, Int, VerseReference, Int)))
       -> m ()
     versesWidget verses' tags' = mdo
-      domSegments' <- maybeDyn $ (liftA2 . liftA2) (,) verses' tags'
+      domSegments' <- maybeDyn $ (liftA2 . liftA2) (,) verses' (Just <$> tags')
       dyn_ $ ffor domSegments' $ \case
         Nothing -> text "Loading..."
         Just versesTags -> void $ do
@@ -384,11 +384,11 @@ watchVerses
   :: (HasApp t m, MonadHold t m, MonadFix m)
   => Dynamic t (TranslationId, Interval VerseReference)
   -> m ( Dynamic t (Maybe (MonoidalMap VerseReference Text))
-       , Dynamic t (Maybe (MonoidalMap Text (Set (VerseReference, Int, VerseReference, Int)))))
+       , Dynamic t (MonoidalMap Text (Set (VerseReference, Int, VerseReference, Int))))
 watchVerses rng = do
   result <- watchViewSelector $ ffor rng $ \(translationId, interval) -> mempty
     { _viewSelector_verseRanges = MMap.singleton translationId $ MMap.singleton interval 1 }
   pure $ splitDynPure $ ffor2 rng result $ \(translationId, _interval) result' -> -- TODO: Filter out verses that fit interval?
     ( (fmap.fmap) (getFirst . snd) $ result' ^? view_verses . ix translationId
-    , (fmap.fmap) MMap.keysSet $ result' ^? view_tags . ix translationId
+    , maybe mempty (fmap MMap.keysSet) $ result' ^? view_tags . ix translationId
     )
