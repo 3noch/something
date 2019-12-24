@@ -246,6 +246,23 @@ verseWordMap
   >>> IntervalMap.fromList
 
 
+wordCharacterRanges :: Text -> Seq (Int, Int)
+wordCharacterRanges t =
+  let
+    (lastIndex, lastPrevBreak, lastRanges) = T.foldl
+      (\(!index, !prevBreak, ranges) c -> if isWordSeparater c
+          then (index + 1, index + 1, ranges Seq.|> (prevBreak, index))
+          else (index + 1, prevBreak, ranges)
+      )
+      (0, 0, mempty)
+      t
+  in if lastPrevBreak < lastIndex
+    then lastRanges Seq.|> (lastPrevBreak, lastIndex)
+    else lastRanges
+
+isWordSeparater :: Char -> Bool
+isWordSeparater = (`elem` [' ', '\n', '\r', '\t', '—', '–', '-'])
+
 combineTagsAndVerses
   :: IntervalMap WordInterval ()
   -> IntervalMap WordInterval Text
@@ -266,6 +283,8 @@ mkNonOverlappingDomSegments verses tags = nonOverlapping filt $ combineTagsAndVe
     filt (_, IntervalEndpoint (_, 0) Open _) _ = False
     filt _ _ = True
 
+newtype CharacterIndex a = CharacterIndex a deriving (Eq, Ord, Enum)
+
 appWidget
   :: forall m js t. (HasApp t m, DomBuilder t m, PostBuild t m, MonadHold t m, MonadFix m, Prerender js t m)
   => Dynamic t (Canon, Maybe (Int, Maybe Int))
@@ -273,11 +292,37 @@ appWidget
 appWidget referenceDyn = do
   now <- getPostBuild
 
-  e <- selectionStart
-  widgetHold_ (text "...") $ ffor e $ \e' -> text $ tshow e'
+  wordClickedRaw :: Event t (IntervalEndpoint (VerseReference, Int), CharacterIndex Int) <-
+    mapMaybe
+      (\(startRef, startWord, endRef, endWord) ->
+          let
+            start = (startRef, startWord)
+            end = (endRef, endWord)
+          in if start == end -- Start and end points must be the same for it to count as a "click"
+              then (, CharacterIndex $ start ^. _2) <$> start ^? _1 . wordStartingEndpointEncoding
+              else Nothing
+      )
+    <$> selectionStart
 
   rec
     (verses, tags) <- watchVerses $ (defaultTranslation, ) <$> range
+
+    let wordClicked = attachWithMaybe
+          (\vs (IntervalEndpoint (vref, wordIndex) _ _, CharacterIndex charIndex) -> do
+            verseText <- MMap.lookup vref vs
+            let indexedWordCharacterRanges = wordCharacterRanges verseText
+            (rangeStartCharacterIndex :: Int, _) <- Seq.lookup wordIndex indexedWordCharacterRanges
+            -- TODO: Do we really need to go through 'IntervalMap' to get this? Could we just search the 'Sequence' directly? A binary search would work.
+            -- Need benchmarks to really know for sure.
+            let charRanges :: IntervalMap (Interval Int) Int = IntervalMap.fromAscList $ map (\(wordIndex :: Int, (startChar :: Int, endChar)) -> (ClosedInterval startChar (endChar - 1), wordIndex)) $ zip [0..] $ toList indexedWordCharacterRanges
+            (_, clickedWordIndex) <- listToMaybe $ IntervalMap.toAscList $ IntervalMap.containing charRanges (rangeStartCharacterIndex + charIndex)
+            Just clickedWordIndex
+          )
+          (fromMaybe mempty <$> current verses)
+          wordClickedRaw
+
+    text "WORD: "
+    widgetHold_ (text "") $ ffor wordClicked $ \w -> text (tshow w)
     versesWidget verses tags
     routeRangeDyn <- holdUniqDyn $ referenceToInterval . referenceToVerseReference <$> referenceDyn
     range <- foldDyn ($) (IntervalCO (VerseReferenceT (BookId 1) 1 1) (VerseReferenceT (BookId 1) 3 9999)) $ leftmost

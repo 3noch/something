@@ -29,6 +29,7 @@ library
   other-modules:
     Frontend.Selection
   default-extensions:
+    BangPatterns
     ConstraintKinds
     DataKinds
     DeriveFoldable

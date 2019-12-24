@@ -27,6 +27,7 @@ library
     , universe
     , witherable
   default-extensions:
+    BangPatterns
     ConstraintKinds
     DataKinds
     DeriveFoldable
