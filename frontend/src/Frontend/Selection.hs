@@ -1,49 +1,55 @@
-{-# LANGUAGE ForeignFunctionInterface #-}
-{-# LANGUAGE JavaScriptFFI            #-}
+{-# LANGUAGE CPP #-}
 
 module Frontend.Selection where
 
 import Control.Lens.Operators ((^.))
-import Control.Monad.Trans (lift)
 import Data.Text (Text)
 import GHCJS.DOM.EventTargetClosures (unsafeEventName)
 import qualified GHCJS.DOM as Dom
 import qualified GHCJS.DOM.EventM as EventM
+import qualified GHCJS.DOM.Node as Node
+import qualified GHCJS.DOM.Selection as Selection
 import qualified GHCJS.DOM.Types as Dom
-import Language.Javascript.JSaddle (isNull, ghcjsPure)
-import Language.Javascript.JSaddle.Object (js0, js)
-import Reflex.Dom.Core (Prerender, Event, switchDyn, prerender, never, wrapDomEventMaybe)
+import qualified GHCJS.DOM.Window as Window
+import Language.Javascript.JSaddle.Object (js, jsg, js1)
+import Reflex.Dom.Core (
+    Event, Prerender,
+    ffor, mapMaybe, never, performEvent, prerender, switchDyn, wrapDomEvent, delay
+  )
 
 import Control.Exception (SomeException)
 import Control.Monad.Catch (catch)
 
-selectionStart :: (Prerender js t m, Monad m) => m (Event t (Text, Int, Text, Int))
+selectionStart :: (Prerender js t m, Applicative m) => m (Event t (Text, Int, Text, Int))
 selectionStart = fmap switchDyn $ prerender (pure never) $ do
   window <- Dom.currentWindowUnchecked
-  wrapDomEventMaybe window (`EventM.on` selectstart) $ lift $ do
-    sel <- window ^. js0 (s_ "getSelection")
+  selectStarted' <- wrapDomEvent window (`EventM.on` selectstart) (pure ())
+  -- In JSaddle calling 'getSelection' must be delayed by a frame in order to get
+  -- the most recent result. However it doesn't have this problem in native GHCJS.
+#if defined(ghcjs_HOST_OS)
+  let selectedStart = selectStarted'
+#else
+  selectStarted <- delay 0 selectStarted'
+#endif
+  fmap (mapMaybe id) $ performEvent $ ffor selectStarted $ \() -> Dom.liftJSM $ do
+    sel <- Window.getSelectionUnchecked window
+    _ <- jsg (s_ "console") ^. js1 (s_ "log") sel
     let liftA4 f a b c d = f <$> a <*> b <*> c <*> d
     (liftA4.liftA4) (,,,)
-      (getStartData "anchorNode" sel)
-      (Dom.fromJSVal @Int =<< sel ^. js (s_ "anchorOffset"))
-      (getStartData "extentNode" sel)
-      (Dom.fromJSVal @Int =<< sel ^. js (s_ "extentOffset"))
+      (getStartData =<< Selection.getAnchorNode sel)
+      (Just . fromIntegral <$> Selection.getAnchorOffset sel)
+      (getStartData =<< Selection.getExtentNode sel)
+      (Just . fromIntegral <$> Selection.getExtentOffset sel)
 
   where
     selectstart :: EventM.EventName self Dom.Event
     selectstart = unsafeEventName (Dom.toJSString (s_ "selectstart"))
 
-    getStartData nodeName sel = do
-      node' <- sel ^. js (s_ nodeName)
-      nodeIsNull <- ghcjsPure (isNull node')
-      case nodeIsNull of
-        True -> pure Nothing
-        False -> (do
-            raw <- node' ^. js (s_ "parentNode") . js (s_ "dataset") . js (s_ "start")
-            Dom.fromJSVal @Text raw
-          ) `catch` \(_ :: SomeException) -> pure Nothing
-
-
-
+    getStartData = \case
+      Nothing -> pure Nothing
+      Just node -> (do
+          parentNode <- Node.getParentNodeUnchecked node
+          Dom.fromJSVal @Text =<< Node.unNode parentNode ^. js (s_ "dataset") . js (s_ "start")
+        ) `catch` \(_ :: SomeException) -> pure Nothing
 
     s_ :: String -> String = id

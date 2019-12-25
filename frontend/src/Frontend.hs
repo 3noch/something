@@ -55,7 +55,6 @@ headSection = do
   elAttr "link" ("rel"=:"stylesheet" <> "type"=:"text/css" <> "href"=:static @"css/bulma.css") blank
   el "title" $ text "Something"
   elAttr "script" ("defer"=:"defer" <> "src"=:"https://use.fontawesome.com/releases/v5.3.1/js/all.js") blank
-  elAttr "script" ("defer"=:"defer" <> "src"=:static @"js/shims.js") blank
 
 runAppWidget ::
   ( HasConfigs m
@@ -250,7 +249,7 @@ wordCharacterRanges :: Text -> Seq (Int, Int)
 wordCharacterRanges t =
   let
     (lastIndex, lastPrevBreak, lastRanges) = T.foldl
-      (\(!index, !prevBreak, ranges) c -> if isWordSeparater c
+      (\(!index, !prevBreak, ranges) c -> if isWordSeparator c
           then (index + 1, index + 1, ranges Seq.|> (prevBreak, index))
           else (index + 1, prevBreak, ranges)
       )
@@ -260,8 +259,8 @@ wordCharacterRanges t =
     then lastRanges Seq.|> (lastPrevBreak, lastIndex)
     else lastRanges
 
-isWordSeparater :: Char -> Bool
-isWordSeparater = (`elem` [' ', '\n', '\r', '\t', '—', '–', '-'])
+isWordSeparator :: Char -> Bool
+isWordSeparator = (`elem` [' ', '\n', '\r', '\t', '—', '–', '-'])
 
 combineTagsAndVerses
   :: IntervalMap WordInterval ()
@@ -283,7 +282,7 @@ mkNonOverlappingDomSegments verses tags = nonOverlapping filt $ combineTagsAndVe
     filt (_, IntervalEndpoint (_, 0) Open _) _ = False
     filt _ _ = True
 
-newtype CharacterIndex a = CharacterIndex a deriving (Eq, Ord, Enum)
+newtype CharacterIndex a = CharacterIndex a deriving (Enum, Eq, Ord, Show)
 
 appWidget
   :: forall m js t. (HasApp t m, DomBuilder t m, PostBuild t m, MonadHold t m, MonadFix m, Prerender js t m)
@@ -293,7 +292,7 @@ appWidget referenceDyn = do
   now <- getPostBuild
 
   wordClickedRaw :: Event t (IntervalEndpoint (VerseReference, Int), CharacterIndex Int) <-
-    mapMaybe
+    traceEvent "AFTER" . mapMaybe
       (\(startRef, startWord, endRef, endWord) ->
           let
             start = (startRef, startWord)
@@ -301,29 +300,43 @@ appWidget referenceDyn = do
           in if start == end -- Start and end points must be the same for it to count as a "click"
               then (, CharacterIndex $ start ^. _2) <$> start ^? _1 . wordStartingEndpointEncoding
               else Nothing
-      )
+      ) . traceEvent "BEFORE"
     <$> selectionStart
 
   rec
     (verses, tags) <- watchVerses $ (defaultTranslation, ) <$> range
 
-    let wordClicked = attachWithMaybe
-          (\vs (IntervalEndpoint (vref, wordIndex) _ _, CharacterIndex charIndex) -> do
+    let wordClicked = traceEvent "ATTACH" $ attachWithMaybe
+          (\vs (IntervalEndpoint (vref, rangeStartWordIndex) _ _, CharacterIndex charIndex) -> do
             verseText <- MMap.lookup vref vs
             let indexedWordCharacterRanges = wordCharacterRanges verseText
-            (rangeStartCharacterIndex :: Int, _) <- Seq.lookup wordIndex indexedWordCharacterRanges
+            (rangeStartCharacterIndex :: Int, _) <- Seq.lookup rangeStartWordIndex indexedWordCharacterRanges
             -- TODO: Do we really need to go through 'IntervalMap' to get this? Could we just search the 'Sequence' directly? A binary search would work.
             -- Need benchmarks to really know for sure.
             let charRanges :: IntervalMap (Interval Int) Int = IntervalMap.fromAscList $ map (\(wordIndex :: Int, (startChar :: Int, endChar)) -> (ClosedInterval startChar (endChar - 1), wordIndex)) $ zip [0..] $ toList indexedWordCharacterRanges
             (_, clickedWordIndex) <- listToMaybe $ IntervalMap.toAscList $ IntervalMap.containing charRanges (rangeStartCharacterIndex + charIndex)
-            Just clickedWordIndex
+            Just (vref, clickedWordIndex)
           )
           (fromMaybe mempty <$> current verses)
           wordClickedRaw
 
-    text "WORD: "
-    widgetHold_ (text "") $ ffor wordClicked $ \w -> text (tshow w)
+    highlightState <- foldDyn toggleMaybe Nothing wordClicked
+    let
+      captureRange :: Maybe (VerseReference, Int) -> (VerseReference, Int) -> Maybe ((VerseReference, Int), (VerseReference, Int))
+      captureRange firstWord lastWord = firstWord <&> \fstWord -> if lastWord >= fstWord
+        then (fstWord, lastWord)
+        else (lastWord, fstWord)
+
+      highlightFinished :: Event t ((VerseReference, Int), (VerseReference, Int)) =
+        traceEvent "HIGHLIGHTED" $ fmapMaybe id $ captureRange <$> current highlightState <@> wordClicked
+
+    _ <- requestingIdentity $ ffor highlightFinished $ \(start, end) ->
+      public $ PublicRequest_AddTag $ TagOccurrence "test" defaultTranslation start end
+
+    text "Range:"
+    widgetHold_ (text "") $ ffor highlightFinished $ \w -> text (tshow w)
     versesWidget verses tags
+
     routeRangeDyn <- holdUniqDyn $ referenceToInterval . referenceToVerseReference <$> referenceDyn
     range <- foldDyn ($) (IntervalCO (VerseReferenceT (BookId 1) 1 1) (VerseReferenceT (BookId 1) 3 9999)) $ leftmost
       [ const <$> current routeRangeDyn <@ now
@@ -397,6 +410,10 @@ dynTextStrict d = do
   d0 <- sample (current d)
   void $ textNode $ def & textNodeConfig_initialContents .~ d0 & textNodeConfig_setContents .~ updated d
 
+toggleMaybe :: a -> Maybe a -> Maybe a
+toggleMaybe a = \case
+  Nothing -> Just a
+  Just _ -> Nothing
 
       -- (_, selectWord) <- fmap (second (fmap getFirst)) $ runEventWriterT $
       --   listWithKey (fromMaybe mempty . coerce <$> verses') $ \vref vDyn ->
@@ -413,10 +430,7 @@ dynTextStrict d = do
 
       -- let
       --   -- Given a new value @a@ and a previous 'Maybe', flip 'Just _' to 'Nothing' and 'Nothing' to @Just a@.
-      --   toggleMaybes :: a -> Maybe a -> Maybe a
-      --   toggleMaybes a = \case
-      --     Nothing -> Just a
-      --     Just _ -> Nothing
+
 
       -- -- Highlight state enters "highlighting" when you select your first word, then goes back when you select the second.
       -- -- Thus this state always stores the first word of a highlight or 'Nothing' if not highlighting.

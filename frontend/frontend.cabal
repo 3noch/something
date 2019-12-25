@@ -9,17 +9,17 @@ library
       base
     , common
     , containers
+    , exceptions
     , ghcjs-dom
-    , jsaddle
-    , jsaddle-dom
     , IntervalMap
+    , jsaddle
     , lens
     , monoidal-containers
     , obelisk-executable-config-lookup
     , obelisk-frontend
     , obelisk-generated-static
     , obelisk-route
-    , reflex-dom
+    , reflex-dom-core
     , rhyolite-frontend
     , rhyolite-common
     , text
@@ -62,7 +62,6 @@ executable frontend
     , obelisk-frontend
     , obelisk-route
     , reflex-dom
-    , obelisk-generated-static
     , frontend
   --TODO: Make these ghc-options optional
   ghc-options: -threaded
