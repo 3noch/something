@@ -9,15 +9,14 @@ module Frontend where
 import Control.Lens (Prism', ix, prism', re)
 import qualified Data.IntervalMap.Generic.Strict as IntervalMap
 import Data.IntervalMap.Generic.Strict (IntervalMap)
-import qualified Data.IntervalSet as IntervalSet
 import Data.IntervalMap.Interval (Interval (..))
-import Data.List (sortOn, foldl')
+import Data.List (sort, foldl')
 import qualified Data.Map as Map
 import qualified Data.Map.Monoidal as MMap
 import Data.Semigroup (First (..))
-import qualified Data.Set as Set
 import Data.Sequence (Seq)
 import qualified Data.Sequence as Seq
+import qualified Data.Set as Set
 import qualified Data.Text as T
 import Data.These (These (This, That, These))
 import Control.Monad.Fix (MonadFix)
@@ -185,33 +184,34 @@ endpointsToInterval = \case
   (IntervalEndpoint a Closed _, IntervalEndpoint b Closed _) -> ClosedInterval a b
   (IntervalEndpoint a Open _, IntervalEndpoint b Open _) -> OpenInterval a b
 
+newtype Ascending a = Ascending { unAscending :: [a] } deriving (Eq, Functor, Monoid, Ord, Semigroup)
+
+filterAscending :: forall a. (a -> Bool) -> Ascending a -> Ascending a
+filterAscending = coerce (filter :: (a -> Bool) -> [a] -> [a])
+
 nonOverlapping
-  :: forall k v. (Ord k, Ord v)
-  => ((IntervalEndpoint k, IntervalEndpoint k) -> Set v -> Bool)
-  -> IntervalMap (Interval k) v
-  -> IntervalMap (Interval k) (Set v)
-nonOverlapping _ xs | null xs = mempty
-nonOverlapping filt xs = IntervalMap.fromAscList $ map (first endpointsToInterval) $ filter (uncurry filt) $ toList $ snd $ foldl'
-  (\(active, intervals) ((this, v), (next, _)) ->
+  :: forall k v. (Ord k)
+  => IntervalMap (Interval k) v
+  -> Ascending (Interval k)
+nonOverlapping xs | null xs = mempty
+nonOverlapping xs = Ascending $ toList $ foldl'
+  (\intervals (this, next) ->
     let
       open x = x{_intervalEndpoint_type = Open}
-      active' = case _intervalEndpoint_position this of
-        Starting -> Set.insert v active
-        Ending -> Set.delete v active
       interval = case (_intervalEndpoint_position this, _intervalEndpoint_position next) of
         (Starting, Ending) -> (this, next)
         (Starting, Starting) -> (this, open next)
         (Ending, Ending) -> (open this, next)
         (Ending, Starting) -> (open this, open next)
-    in (active', intervals Seq.:|> (interval, active'))
+    in intervals Seq.:|> endpointsToInterval interval
   )
-  (mempty, mempty)
+  mempty
   (zip endpoints (tail endpoints))
   where
-    endpoints :: [(IntervalEndpoint k, v)] = sortOn fst $ fold $ do
-      (interval, v) <- IntervalMap.toList xs
+    endpoints :: [IntervalEndpoint k] = sort $ fold $ do
+      interval <- IntervalMap.keys xs
       let (left, right) = intervalToEndpoints interval
-      pure [(left, v), (right, v)]
+      pure [left, right]
 
 verseWords :: Text -> Seq Text
 verseWords = Seq.fromList . filter (not . T.null) . T.split (' '==)
@@ -224,14 +224,14 @@ versesToRanges
   >>> MMap.mapWithKey verseWordsToInterval
   >>> MMap.elems
   >>> map (, ())
-  >>> IntervalMap.fromList
+  >>> IntervalMap.fromList -- TODO: Can we use fromAscList?
   where
     verseWordsToInterval :: VerseReference -> Seq Text -> Interval (VerseReference, Int)
     verseWordsToInterval vref ws = ClosedInterval (vref, 0) (vref, length ws - 1)
 
-tagsToRanges :: MonoidalMap Text (Set (VerseReference, Int, VerseReference, Int)) -> IntervalMap WordInterval Text
-tagsToRanges tagMap = IntervalMap.fromList
-  [ (ClosedInterval (vref1, w1) (vref2, w2), t)
+tagsToRanges :: MonoidalMap Text (Set (VerseReference, Int, VerseReference, Int)) -> IntervalMap WordInterval (Set Text)
+tagsToRanges tagMap = IntervalMap.fromListWith (<>)
+  [ (ClosedInterval (vref1, w1) (vref2, w2), Set.singleton t)
   | (t, ranges) <- MMap.toList tagMap
   , (vref1, w1, vref2, w2) <- toList ranges
   ]
@@ -242,7 +242,7 @@ verseWordMap
   >>> MMap.mapWithKey (\vref ws -> [(ClosedInterval (vref, idx) (vref, idx), w) | (idx, w) <- zip [0..] (toList ws)])
   >>> MMap.elems
   >>> concat
-  >>> IntervalMap.fromList
+  >>> IntervalMap.fromList -- TODO: Can this be fromAscList?
 
 
 wordCharacterRanges :: Text -> Seq (Int, Int)
@@ -264,23 +264,24 @@ isWordSeparator = (`elem` [' ', '\n', '\r', '\t', '—', '–', '-'])
 
 combineTagsAndVerses
   :: IntervalMap WordInterval ()
-  -> IntervalMap WordInterval Text
-  -> IntervalMap WordInterval (These Text ())
-combineTagsAndVerses verses tags = IntervalMap.unionWith merge_ (This <$> tags) (That <$> verses)
+  -> IntervalMap WordInterval (Set Text)
+  -> IntervalMap WordInterval (These (Set Text) ())
+combineTagsAndVerses verses tagRanges = IntervalMap.unionWith merge_ (This <$> tagRanges) (That <$> verses)
   where
     merge_ (This a) (That b) = These a b
     merge_ _ _ = error "Impossible"
 
 mkNonOverlappingDomSegments
   :: MonoidalMap VerseReference Text
-  -> MonoidalMap Text (Set (VerseReference, Int, VerseReference, Int))
-  -> IntervalMap WordInterval (Set (These Text ()))
-mkNonOverlappingDomSegments verses tags = nonOverlapping filt $ combineTagsAndVerses (versesToRanges verses) (tagsToRanges tags)
+  -> IntervalMap WordInterval (Set Text)
+  -> Ascending WordInterval
+mkNonOverlappingDomSegments verses tagRanges = filterAscending filt $ nonOverlapping $ combineTagsAndVerses (versesToRanges verses) tagRanges
   where
     -- We can drop any interval that ends with an open endpoint on a 0th word. That interval
     -- corresponds to the spans between verses and those will never contain any text.
-    filt (_, IntervalEndpoint (_, 0) Open _) _ = False
-    filt _ _ = True
+    filt (IntervalCO _ (_, 0)) = False
+    filt (OpenInterval _ (_, 0)) = False
+    filt _ = True
 
 newtype CharacterIndex a = CharacterIndex a deriving (Enum, Eq, Ord, Show)
 
@@ -363,14 +364,16 @@ appWidget referenceDyn = do
       -> m ()
     versesWidget verses' tags' = mdo
       domSegments' <- maybeDyn $ (liftA2 . liftA2) (,) verses' (Just <$> tags')
+
       dyn_ $ ffor domSegments' $ \case
         Nothing -> text "Loading..."
         Just versesTags -> divClass "passage" $ do
           let
             (verses, tags) = splitDynPure versesTags
+            tagRanges = tagsToRanges <$> tags
             wordMap = verseWordMap <$> verses
-            domSegments = Map.fromDistinctAscList . IntervalMap.toAscList <$> liftA2 mkNonOverlappingDomSegments verses tags
-          void $ listWithKey domSegments $ \k v -> do
+            domSegments = Map.fromDistinctAscList . map (,()) . unAscending <$> liftA2 mkNonOverlappingDomSegments verses tagRanges
+          void $ listWithKey domSegments $ \k _ -> do
             let startingEndpoint = fst (intervalToEndpoints k)
             case startingEndpoint of
               IntervalEndpoint (VerseReferenceT book chapter verse, 0) Closed _
@@ -380,7 +383,7 @@ appWidget referenceDyn = do
               _ -> blank
             let
               wordsDyn = T.intercalate " " . map snd . IntervalMap.toAscList . (`IntervalMap.intersecting` k) <$> wordMap
-              isHighlighted = any (\case This _ -> True; These _ _ -> True; That _ -> False) <$> v
+              isHighlighted = not . null . (`IntervalMap.intersecting` k) <$> tagRanges
               styleDyn = ffor isHighlighted $ \hl ->
                 "data-start" =: startingEndpoint ^. re wordStartingEndpointEncoding <>
                 if hl then "style" =: "background-color:yellow;" else mempty
@@ -414,43 +417,6 @@ toggleMaybe :: a -> Maybe a -> Maybe a
 toggleMaybe a = \case
   Nothing -> Just a
   Just _ -> Nothing
-
-      -- (_, selectWord) <- fmap (second (fmap getFirst)) $ runEventWriterT $
-      --   listWithKey (fromMaybe mempty . coerce <$> verses') $ \vref vDyn ->
-      --     el "p" $ do
-      --       let yellow = "style" =: "background-color: yellow;"
-      --       let blue = "style" =: "background-color: grey;"
-      --       text $ T.pack (show $ _versereferenceChapter vref) <> ":" <> T.pack (show $ _versereferenceVerse vref) <> " "
-      --       vDynUniq <- holdUniqDyn vDyn
-      --       dyn_ $ ffor vDynUniq $ \v -> ifor_ (T.words v) $ \i w ->
-      --         elDynAttr "span" (fromUniqDynamic $ ffor selections $ \sels -> if null (IntervalSet.containing sels (vref, i)) then mempty else yellow) $ do
-      --           (elmnt, _) <- elDynAttr' "a" (ffor highlightState $ \firstWord -> if firstWord == Just (vref, i) then blue else mempty) $ text w
-      --           text " "
-      --           tellEvent $ First (vref, i) <$ domEvent Click elmnt
-
-      -- let
-      --   -- Given a new value @a@ and a previous 'Maybe', flip 'Just _' to 'Nothing' and 'Nothing' to @Just a@.
-
-
-      -- -- Highlight state enters "highlighting" when you select your first word, then goes back when you select the second.
-      -- -- Thus this state always stores the first word of a highlight or 'Nothing' if not highlighting.
-      -- highlightState <- foldDyn toggleMaybes Nothing selectWord
-
-      -- let
-      --   captureRange :: Maybe (VerseReference, Int) -> (VerseReference, Int) -> Maybe (Interval (VerseReference, Int))
-      --   captureRange firstWord lastWord = firstWord <&> \fstWord -> if lastWord >= fstWord
-      --     then ClosedInterval fstWord lastWord
-      --     else ClosedInterval lastWord fstWord
-
-      --   highlightFinished :: Event t (Interval (VerseReference, Int)) = fmapMaybe id $ captureRange <$> current highlightState <@> selectWord
-
-      -- let
-      --   tagSpanToInterval (ref1, word1, ref2, word2) = ClosedInterval (ref1, word1) (ref2, word2)
-      --   selections :: UniqDynamic t (IntervalSet.IntervalSet (Interval (VerseReference, Int))) =
-      --     maybe mempty (IntervalSet.fromList . map tagSpanToInterval . toList . fold . MMap.elems) <$> uniqDynamic tags'
-      -- _ <- requestingIdentity $ ffor highlightFinished $ \(ClosedInterval start end) -> -- TODO: Partial match
-      --   public $ PublicRequest_AddTag $ TagOccurrence "test" defaultTranslation start end
-      --pure ()
 
 watchTranslations
   :: (HasApp t m, MonadHold t m, MonadFix m)
