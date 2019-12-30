@@ -293,7 +293,7 @@ appWidget referenceDyn = do
   now <- getPostBuild
 
   wordClickedRaw :: Event t (IntervalEndpoint (VerseReference, Int), CharacterIndex Int) <-
-    traceEvent "AFTER" . mapMaybe
+    mapMaybe
       (\(startRef, startWord, endRef, endWord) ->
           let
             start = (startRef, startWord)
@@ -301,13 +301,13 @@ appWidget referenceDyn = do
           in if start == end -- Start and end points must be the same for it to count as a "click"
               then (, CharacterIndex $ start ^. _2) <$> start ^? _1 . wordStartingEndpointEncoding
               else Nothing
-      ) . traceEvent "BEFORE"
+      )
     <$> selectionStart
 
   rec
     (verses, tags) <- watchVerses $ (defaultTranslation, ) <$> range
 
-    let wordClicked = traceEvent "ATTACH" $ attachWithMaybe
+    let wordClicked = attachWithMaybe
           (\vs (IntervalEndpoint (vref, rangeStartWordIndex) _ _, CharacterIndex charIndex) -> do
             verseText <- MMap.lookup vref vs
             let indexedWordCharacterRanges = wordCharacterRanges verseText
@@ -329,7 +329,7 @@ appWidget referenceDyn = do
         else (lastWord, fstWord)
 
       highlightFinished :: Event t ((VerseReference, Int), (VerseReference, Int)) =
-        traceEvent "HIGHLIGHTED" $ fmapMaybe id $ captureRange <$> current highlightState <@> wordClicked
+        fmapMaybe id $ captureRange <$> current highlightState <@> wordClicked
 
     _ <- requestingIdentity $ ffor highlightFinished $ \(start, end) ->
       public $ PublicRequest_AddTag $ TagOccurrence "test" defaultTranslation start end
