@@ -305,7 +305,7 @@ appWidget referenceDyn = do
     <$> selectionStart
 
   rec
-    (verses, tags) <- watchVerses $ (defaultTranslation, ) <$> range
+    (verses, tags) <- watchVerses $ (defaultTranslation,) <$> range
 
     let wordClicked = attachWithMaybe
           (\vs (IntervalEndpoint (vref, rangeStartWordIndex) _ _, CharacterIndex charIndex) -> do
@@ -334,8 +334,6 @@ appWidget referenceDyn = do
     _ <- requestingIdentity $ ffor highlightFinished $ \(start, end) ->
       public $ PublicRequest_AddTag $ TagOccurrence "test" defaultTranslation start end
 
-    text "Range:"
-    widgetHold_ (text "") $ ffor highlightFinished $ \w -> text (tshow w)
     versesWidget verses tags
 
     routeRangeDyn <- holdUniqDyn $ referenceToInterval . referenceToVerseReference <$> referenceDyn
