@@ -285,6 +285,16 @@ newtype CharacterIndex a = CharacterIndex a deriving (Enum, Eq, Ord, Show)
 
 data CursorMode = CursorMode_Select | CursorMode_Highlight deriving (Eq, Show)
 
+showWordInterval :: WordInterval -> Text
+showWordInterval = \case
+  ClosedInterval a b -> s a <> "-" <> s b
+  OpenInterval a b -> irregular "(" ")" a b
+  IntervalCO a b -> irregular "[" ")" a b
+  IntervalOC a b -> irregular "(" "]" a b
+  where
+    s (VerseReferenceT _ c v, w) = tshow c <> ":" <> tshow v <> (if w == 0 then "" else "#" <> tshow w)
+    irregular l r a b = l <> s a <> ", " <> s b <> r
+
 appWidget
   :: forall m js t. (HasApp t m, DomBuilder t m, PostBuild t m, MonadHold t m, MonadFix m, Prerender js t m)
   => Dynamic t (Canon, Maybe (Int, Maybe Int))
@@ -343,12 +353,15 @@ appWidget referenceDyn = do
           Just selectedRanges -> do
             el "h2" $ text "Tags"
             divClass "columns" $
-              void $ listWithKey (Map.fromDistinctAscList . IntervalMap.toAscList <$> selectedRanges) $ \k v -> divClass "column is-full" $ do
-                dynTextStrict $ T.intercalate "," . toList <$> v
-                el "br_" blank
-                text $ tshow k
+              void $ listWithKey (Map.fromDistinctAscList . IntervalMap.toAscList <$> selectedRanges) $ \tagRange tagNames ->
+                void $ listWithKey (Map.fromSet (,()) <$> tagNames) $ \tagName _ -> divClass "column is-full" $ do
+                  text $ tagName <> " " <> showWordInterval tagRange
+                  (e, ()) <- elAttr' "button" ("type"=:"button" <> "class"=:"button is-danger") (text "Delete")
+                  let ClosedInterval start end = tagRange
+                  void $ requestingIdentity $ ffor (domEvent Click e) $ \() ->
+                    public $ PublicRequest_DeleteTag $ TagOccurrence tagName defaultTranslation start end
 
-        pure  cursorMode_
+        pure cursorMode_
 
     highlightState <- foldDyn ($) Nothing $ leftmost
       [ const Nothing <$ mapMaybe (guard . (CursorMode_Highlight /=)) (updated cursorMode)

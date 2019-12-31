@@ -9,6 +9,7 @@ import Rhyolite.Backend.App (RequestHandler (..))
 import Backend.Schema
 import Backend.Transaction (Transaction, runQuery)
 import Common.App (PrivateRequest (..), PublicRequest (..), TagOccurrence (..))
+import Common.Prelude
 import Common.Schema
 
 requestHandler :: (forall x. Transaction mode x -> m x) -> RequestHandler (ApiRequest () PublicRequest PrivateRequest) m
@@ -49,6 +50,29 @@ requestHandler runTransaction =
               ])
 
         notify Notification_Tag (Added, occurrence)
+
+      PublicRequest_DeleteTag occurrence@(TagOccurrence tagName translationId (startRef, startWord) (endRef, endWord)) -> do
+        runQuery $ do
+          tagIds <- runSelectReturningList $ select $ do
+            tag <- all_ (_dbTag db)
+            guard_ (_tagName tag ==. val_ tagName)
+            pure $ _tagId tag
+
+          rangeIds <- runSelectReturningList $ select $ do
+            taggedRange <- all_ (_dbTaggedRange db)
+            guard_ (_taggedrangeStart taggedRange ==. val_ startRef &&. _taggedrangeEnd taggedRange ==. val_ endRef)
+            guard_ (_taggedrangeForTag taggedRange `in_` map (val_ . coerce) tagIds)
+            pure $ _taggedrangeId taggedRange
+          pure ()
+
+          runDelete $ delete (_dbTaggedRangeByWord db) $ \t ->
+                _taggedrangebywordForRange t `in_` map (val_ . coerce) rangeIds
+            &&. _taggedrangebywordForTranslation t ==. val_ translationId
+            &&. _taggedrangebywordStart t ==. val_ startWord
+            &&. _taggedrangebywordEnd t ==. val_ endWord
+
+        notify Notification_Tag (Deleted, occurrence)
+
 
     ApiRequest_Private _key r -> case r of
       PrivateRequest_NoOp -> return ()

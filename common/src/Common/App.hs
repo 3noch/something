@@ -45,6 +45,7 @@ deriveJSON Json.defaultOptions 'TagOccurrence
 
 data PublicRequest a where
   PublicRequest_AddTag :: !TagOccurrence -> PublicRequest ()
+  PublicRequest_DeleteTag :: !TagOccurrence -> PublicRequest ()
 deriving instance Show a => Show (PublicRequest a)
 fmap concat $ sequence
   [ deriveJSONGADT ''PublicRequest
