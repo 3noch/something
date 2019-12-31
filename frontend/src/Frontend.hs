@@ -218,13 +218,11 @@ verseWords = Seq.fromList . filter (not . T.null) . T.split (' '==)
 
 type WordInterval = Interval (VerseReference, Int)
 
-versesToRanges :: MonoidalMap VerseReference Text -> IntervalMap WordInterval ()
+versesToRanges :: MonoidalMap VerseReference Text -> IntervalMap WordInterval (Seq Text)
 versesToRanges
-  =   fmap verseWords
-  >>> MMap.mapWithKey verseWordsToInterval
-  >>> MMap.elems
-  >>> map (, ())
-  >>> IntervalMap.fromList -- TODO: Can we use fromAscList?
+  =   MMap.toAscList
+  >>> map (\(k, v) -> let ws = verseWords v in (verseWordsToInterval k ws, ws))
+  >>> IntervalMap.fromDistinctAscList
   where
     verseWordsToInterval :: VerseReference -> Seq Text -> Interval (VerseReference, Int)
     verseWordsToInterval vref ws = ClosedInterval (vref, 0) (vref, length ws - 1)
@@ -236,14 +234,13 @@ tagsToRanges tagMap = IntervalMap.fromListWith (<>)
   , (vref1, w1, vref2, w2) <- toList ranges
   ]
 
-verseWordMap :: MonoidalMap VerseReference Text -> IntervalMap WordInterval Text
+verseWordMap :: IntervalMap WordInterval (Seq Text) -> IntervalMap WordInterval Text
 verseWordMap
-  =   fmap verseWords -- TODO: Factor this out as it's done in multiple places
-  >>> MMap.mapWithKey (\vref ws -> [(ClosedInterval (vref, idx) (vref, idx), w) | (idx, w) <- zip [0..] (toList ws)])
-  >>> MMap.elems
+  =   IntervalMap.toAscList
+  -- TODO: Partial match below
+  >>> map (\(ClosedInterval (vref, _) _, ws) -> [(ClosedInterval (vref, idx) (vref, idx), w) | (idx, w) <- zip [0..] (toList ws)])
   >>> concat
-  >>> IntervalMap.fromList -- TODO: Can this be fromAscList?
-
+  >>> IntervalMap.fromAscList -- TODO: Prove this is correct to use fromAscList
 
 wordCharacterRanges :: Text -> Seq (Int, Int)
 wordCharacterRanges t =
@@ -263,25 +260,26 @@ isWordSeparator :: Char -> Bool
 isWordSeparator = (`elem` [' ', '\n', '\r', '\t', '—', '–', '-'])
 
 combineTagsAndVerses
-  :: IntervalMap WordInterval ()
+  :: IntervalMap WordInterval a
   -> IntervalMap WordInterval (Set Text)
   -> IntervalMap WordInterval (These (Set Text) ())
-combineTagsAndVerses verses tagRanges = IntervalMap.unionWith merge_ (This <$> tagRanges) (That <$> verses)
+combineTagsAndVerses verses tagRanges = IntervalMap.unionWith merge_ (This <$> tagRanges) (That () <$ verses)
   where
     merge_ (This a) (That b) = These a b
     merge_ _ _ = error "Impossible"
 
 mkNonOverlappingDomSegments
-  :: MonoidalMap VerseReference Text
+  :: IntervalMap WordInterval a
   -> IntervalMap WordInterval (Set Text)
   -> Ascending WordInterval
-mkNonOverlappingDomSegments verses tagRanges = filterAscending filt $ nonOverlapping $ combineTagsAndVerses (versesToRanges verses) tagRanges
+mkNonOverlappingDomSegments verseRanges tagRanges = filterAscending f $ nonOverlapping $ combineTagsAndVerses verseRanges tagRanges
   where
     -- We can drop any interval that ends with an open endpoint on a 0th word. That interval
     -- corresponds to the spans between verses and those will never contain any text.
-    filt (IntervalCO _ (_, 0)) = False
-    filt (OpenInterval _ (_, 0)) = False
-    filt _ = True
+    f = \case
+      (IntervalCO _ (_, 0)) -> False
+      (OpenInterval _ (_, 0)) -> False
+      _ -> True
 
 newtype CharacterIndex a = CharacterIndex a deriving (Enum, Eq, Ord, Show)
 
@@ -308,8 +306,9 @@ appWidget referenceDyn = do
 
   rec
     (verses, tags) <- watchVerses $ (defaultTranslation,) <$> range
+    let verseRanges = fmap versesToRanges <$> verses
 
-    let wordClicked = attachWithMaybe
+    let wordClicked :: Event t (VerseReference, Int) = attachWithMaybe
           (\vs (IntervalEndpoint (vref, rangeStartWordIndex) _ _, CharacterIndex charIndex) -> do
             verseText <- MMap.lookup vref vs
             let indexedWordCharacterRanges = wordCharacterRanges verseText
@@ -325,7 +324,7 @@ appWidget referenceDyn = do
 
     cursorMode <- divClass "columns" $ do
       divClass "column is-two-thirds" $
-        versesWidget verses tags
+        versesWidget verseRanges tags
       divClass "column" $
         toggleButtons CursorMode_Select [CursorMode_Select, CursorMode_Highlight] $ text . \case
           CursorMode_Select -> "Select"
@@ -346,6 +345,11 @@ appWidget referenceDyn = do
 
     _ <- requestingIdentity $ ffor highlightFinished $ \(start, end) ->
       public $ PublicRequest_AddTag $ TagOccurrence "test" defaultTranslation start end
+
+    let
+      rangeSelected :: Event t (IntervalMap WordInterval (Seq Text)) =
+        attachWith IntervalMap.containing (fromMaybe mempty <$> current verseRanges) wordClicked
+
 
     routeRangeDyn <- holdUniqDyn $ referenceToInterval . referenceToVerseReference <$> referenceDyn
     range <- foldDyn ($) (IntervalCO (VerseReferenceT (BookId 1) 1 1) (VerseReferenceT (BookId 1) 3 9999)) $ leftmost
@@ -368,20 +372,20 @@ appWidget referenceDyn = do
       (VerseReferenceT (BookId b) (c + 1) 9999)
 
     versesWidget
-      :: Dynamic t (Maybe (MonoidalMap VerseReference Text))
+      :: Dynamic t (Maybe (IntervalMap WordInterval (Seq Text)))
       -> Dynamic t (MonoidalMap Text (Set (VerseReference, Int, VerseReference, Int)))
       -> m ()
-    versesWidget verses' tags' = mdo
-      domSegments' <- maybeDyn $ (liftA2 . liftA2) (,) verses' (Just <$> tags')
+    versesWidget verseRanges' tags' = mdo
+      domSegments' <- maybeDyn $ (liftA2 . liftA2) (,) verseRanges' (Just <$> tags')
 
       dyn_ $ ffor domSegments' $ \case
         Nothing -> text "Loading..."
         Just versesTags -> divClass "passage" $ do
           let
-            (verses, tags) = splitDynPure versesTags
+            (verseRanges, tags) = splitDynPure versesTags
             tagRanges = tagsToRanges <$> tags
-            wordMap = verseWordMap <$> verses
-            domSegments = Map.fromDistinctAscList . map (,()) . unAscending <$> liftA2 mkNonOverlappingDomSegments verses tagRanges
+            wordMap = verseWordMap <$> verseRanges
+            domSegments = Map.fromDistinctAscList . map (,()) . unAscending <$> liftA2 mkNonOverlappingDomSegments verseRanges tagRanges
           void $ listWithKey domSegments $ \k _ -> do
             let startingEndpoint = fst (intervalToEndpoints k)
             case startingEndpoint of
