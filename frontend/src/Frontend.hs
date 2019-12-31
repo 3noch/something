@@ -285,6 +285,8 @@ mkNonOverlappingDomSegments verses tagRanges = filterAscending filt $ nonOverlap
 
 newtype CharacterIndex a = CharacterIndex a deriving (Enum, Eq, Ord, Show)
 
+data CursorMode = CursorMode_Select | CursorMode_Highlight deriving (Eq, Show)
+
 appWidget
   :: forall m js t. (HasApp t m, DomBuilder t m, PostBuild t m, MonadHold t m, MonadFix m, Prerender js t m)
   => Dynamic t (Canon, Maybe (Int, Maybe Int))
@@ -321,7 +323,18 @@ appWidget referenceDyn = do
           (fromMaybe mempty <$> current verses)
           wordClickedRaw
 
-    highlightState <- foldDyn toggleMaybe Nothing wordClicked
+    cursorMode <- divClass "columns" $ do
+      divClass "column is-two-thirds" $
+        versesWidget verses tags
+      divClass "column" $
+        toggleButtons CursorMode_Select [CursorMode_Select, CursorMode_Highlight] $ text . \case
+          CursorMode_Select -> "Select"
+          CursorMode_Highlight -> "Highlight"
+
+    highlightState <- foldDyn ($) Nothing $ leftmost
+      [ const Nothing <$ mapMaybe (guard . (CursorMode_Highlight /=)) (updated cursorMode)
+      , toggleMaybe <$> gate ((CursorMode_Highlight ==) <$> current cursorMode) wordClicked
+      ]
     let
       captureRange :: Maybe (VerseReference, Int) -> (VerseReference, Int) -> Maybe ((VerseReference, Int), (VerseReference, Int))
       captureRange firstWord lastWord = firstWord <&> \fstWord -> if lastWord >= fstWord
@@ -333,8 +346,6 @@ appWidget referenceDyn = do
 
     _ <- requestingIdentity $ ffor highlightFinished $ \(start, end) ->
       public $ PublicRequest_AddTag $ TagOccurrence "test" defaultTranslation start end
-
-    versesWidget verses tags
 
     routeRangeDyn <- holdUniqDyn $ referenceToInterval . referenceToVerseReference <$> referenceDyn
     range <- foldDyn ($) (IntervalCO (VerseReferenceT (BookId 1) 1 1) (VerseReferenceT (BookId 1) 3 9999)) $ leftmost
@@ -403,6 +414,18 @@ wordStartingEndpointEncoding = prism'
       where read' = readMaybe . T.unpack
     _ -> Nothing
   )
+
+toggleButtons :: (DomBuilder t m, MonadFix m, MonadHold t m, PostBuild t m, Eq a) => a -> [a] -> (a -> m ()) -> m (Dynamic t a)
+toggleButtons v0 options showOption = do
+  rec
+    clickOptions <- for options $ \o -> do
+      (e, ()) <- elDynAttr' "button"
+        (ffor currentOption $ \co -> "class"=:(if co == o then "button" else "button is-light") <> "type"=:"button")
+        (showOption o)
+      pure $ domEvent Click e $> o
+    currentOption <- holdDyn v0 $ leftmost clickOptions -- TODO: Use demux for this
+  pure currentOption
+
 
 -- | A more efficient version of 'dynText' but with the added requirement that the input 'Dynamic' be strict.
 -- That is, it must have a value at DOM-building time because it's initial value is immediately sampled.
