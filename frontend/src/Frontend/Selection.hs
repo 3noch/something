@@ -11,7 +11,7 @@ import qualified GHCJS.DOM.Node as Node
 import qualified GHCJS.DOM.Selection as Selection
 import qualified GHCJS.DOM.Types as Dom
 import qualified GHCJS.DOM.Window as Window
-import Language.Javascript.JSaddle.Object (js, jsg, js1)
+import Language.Javascript.JSaddle.Object (js)
 import Reflex.Dom.Core (
     Event, Prerender,
     ffor, mapMaybe, never, performEvent, prerender, switchDyn, wrapDomEvent, delay
@@ -33,7 +33,6 @@ selectionStart = fmap switchDyn $ prerender (pure never) $ do
 #endif
   fmap (mapMaybe id) $ performEvent $ ffor selectStarted $ \() -> Dom.liftJSM $ do
     sel <- Window.getSelectionUnchecked window
-    _ <- jsg (s_ "console") ^. js1 (s_ "log") sel
     let liftA4 f a b c d = f <$> a <*> b <*> c <*> d
     (liftA4.liftA4) (,,,)
       (getStartData =<< Selection.getAnchorNode sel)
