@@ -325,10 +325,30 @@ appWidget referenceDyn = do
     cursorMode <- divClass "columns" $ do
       divClass "column is-two-thirds" $
         versesWidget verseRanges tags
-      divClass "column" $
-        toggleButtons CursorMode_Select [CursorMode_Select, CursorMode_Highlight] $ text . \case
-          CursorMode_Select -> "Select"
-          CursorMode_Highlight -> "Highlight"
+      divClass "column" $ do
+        cursorMode_ <- divClass "columns" $
+          toggleButtons CursorMode_Select [CursorMode_Select, CursorMode_Highlight] $ text . \case
+            CursorMode_Select -> "Select"
+            CursorMode_Highlight -> "Highlight"
+
+        let tagRanges = tagsToRanges <$> tags -- TODO: We do this twice!
+        let rangeSelected :: Event t (IntervalMap WordInterval (Set Text)) =
+              attachWith IntervalMap.containing ( current tagRanges) wordClicked
+        selectedRanges' <- maybeDyn <=< holdDyn Nothing $ leftmost
+          [ Nothing <$ mapMaybe (guard . (CursorMode_Select /=)) (updated cursorMode_)
+          , Just <$> rangeSelected
+          ]
+        dyn_ $ ffor selectedRanges' $ \case
+          Nothing -> blank
+          Just selectedRanges -> do
+            el "h2" $ text "Tags"
+            divClass "columns" $
+              void $ listWithKey (Map.fromDistinctAscList . IntervalMap.toAscList <$> selectedRanges) $ \k v -> divClass "column is-full" $ do
+                dynTextStrict $ T.intercalate "," . toList <$> v
+                el "br_" blank
+                text $ tshow k
+
+        pure  cursorMode_
 
     highlightState <- foldDyn ($) Nothing $ leftmost
       [ const Nothing <$ mapMaybe (guard . (CursorMode_Highlight /=)) (updated cursorMode)
@@ -345,10 +365,6 @@ appWidget referenceDyn = do
 
     _ <- requestingIdentity $ ffor highlightFinished $ \(start, end) ->
       public $ PublicRequest_AddTag $ TagOccurrence "test" defaultTranslation start end
-
-    let
-      rangeSelected :: Event t (IntervalMap WordInterval (Seq Text)) =
-        attachWith IntervalMap.containing (fromMaybe mempty <$> current verseRanges) wordClicked
 
 
     routeRangeDyn <- holdUniqDyn $ referenceToInterval . referenceToVerseReference <$> referenceDyn
