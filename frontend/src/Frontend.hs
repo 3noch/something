@@ -332,9 +332,9 @@ appWidget referenceDyn = do
           (fromMaybe mempty <$> current verses)
           wordClickedRaw
 
-    cursorMode <- divClass "columns" $ do
+    (cursorMode, selectedRanges) <- divClass "columns" $ do
       divClass "column is-two-thirds" $
-        versesWidget verseRanges tags
+        versesWidget verseRanges tags selectedRanges
       divClass "column" $ do
         cursorMode_ <- divClass "columns" $
           toggleButtons CursorMode_Select [CursorMode_Select, CursorMode_Highlight] $ text . \case
@@ -344,16 +344,17 @@ appWidget referenceDyn = do
         let tagRanges = tagsToRanges <$> tags -- TODO: We do this twice!
         let rangeSelected :: Event t (IntervalMap WordInterval (Set Text)) =
               attachWith IntervalMap.containing ( current tagRanges) wordClicked
-        selectedRanges' <- maybeDyn <=< holdDyn Nothing $ leftmost
+        selectedRanges_ <- holdDyn Nothing $ leftmost
           [ Nothing <$ mapMaybe (guard . (CursorMode_Select /=)) (updated cursorMode_)
           , Just <$> rangeSelected
           ]
-        dyn_ $ ffor selectedRanges' $ \case
+        selectedRanges_' <- maybeDyn selectedRanges_
+        dyn_ $ ffor selectedRanges_' $ \case
           Nothing -> blank
-          Just selectedRanges -> do
+          Just selRanges -> do
             el "h2" $ text "Tags"
             divClass "columns" $
-              void $ listWithKey (Map.fromDistinctAscList . IntervalMap.toAscList <$> selectedRanges) $ \tagRange tagNames ->
+              void $ listWithKey (Map.fromDistinctAscList . IntervalMap.toAscList <$> selRanges) $ \tagRange tagNames ->
                 void $ listWithKey (Map.fromSet (,()) <$> tagNames) $ \tagName _ -> divClass "column is-full" $ do
                   text $ tagName <> " " <> showWordInterval tagRange
                   (e, ()) <- elAttr' "button" ("type"=:"button" <> "class"=:"button is-danger") (text "Delete")
@@ -361,7 +362,7 @@ appWidget referenceDyn = do
                   void $ requestingIdentity $ ffor (domEvent Click e) $ \() ->
                     public $ PublicRequest_DeleteTag $ TagOccurrence tagName defaultTranslation start end
 
-        pure cursorMode_
+        pure (cursorMode_, selectedRanges_)
 
     highlightState <- foldDyn ($) Nothing $ leftmost
       [ const Nothing <$ mapMaybe (guard . (CursorMode_Highlight /=)) (updated cursorMode)
@@ -403,8 +404,9 @@ appWidget referenceDyn = do
     versesWidget
       :: Dynamic t (Maybe (IntervalMap WordInterval (Seq Text)))
       -> Dynamic t (MonoidalMap Text (Set (VerseReference, Int, VerseReference, Int)))
+      -> Dynamic t (Maybe (IntervalMap WordInterval a))
       -> m ()
-    versesWidget verseRanges' tags' = mdo
+    versesWidget verseRanges' tags' selected = mdo
       domSegments' <- maybeDyn $ (liftA2 . liftA2) (,) verseRanges' (Just <$> tags')
 
       dyn_ $ ffor domSegments' $ \case
@@ -426,9 +428,13 @@ appWidget referenceDyn = do
             let
               wordsDyn = T.intercalate " " . map snd . IntervalMap.toAscList . (`IntervalMap.intersecting` k) <$> wordMap
               isHighlighted = not . null . (`IntervalMap.intersecting` k) <$> tagRanges
-              styleDyn = ffor isHighlighted $ \hl ->
+              isSelected = maybe False (not . null . (`IntervalMap.intersecting` k)) <$> selected
+
+            color <- holdUniqDyn $ ffor2 isHighlighted isSelected $ \h s -> if s then Just "pink" else if h then Just "yellow" else Nothing
+            let
+              styleDyn = ffor color $ \c' ->
                 "data-start" =: startingEndpoint ^. re wordStartingEndpointEncoding <>
-                if hl then "style" =: "background-color:yellow;" else mempty
+                maybe mempty (\c -> "style" =: ("background-color:" <> c <> ";")) c'
             text " "
             elDynAttr "span" styleDyn $ dynTextStrict wordsDyn
 
