@@ -155,6 +155,12 @@ instance Table TaggedRangeByWordT where
 
 
 -------------------------------------------------------------------------------
+data Presence = Present | Absent
+  deriving (Bounded, Enum, Eq, Generic, Ord, Show)
+  deriving anyclass (FromJSON, ToJSON)
+-------------------------------------------------------------------------------
+
+-------------------------------------------------------------------------------
 verseToVerseReference :: VerseT f -> VerseReferenceT f
 verseToVerseReference v = VerseReferenceT
   { _versereferenceBook = _verseBook v

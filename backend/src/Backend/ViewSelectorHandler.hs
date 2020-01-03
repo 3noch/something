@@ -31,7 +31,7 @@ viewSelectorHandler runTransaction vs = if vs == mempty then pure mempty else ru
         -- and then fan them back out to the appropriate clients.
         (a,) <$> getVersesInInterval translationId range
 
-  tags <-
+  tags :: MonoidalMap TranslationId (MonoidalMap (Interval VerseReference) (a, MonoidalMap Text (Set (ClosedInterval' (VerseReference, Int))))) <-
     ifor (_viewSelector_verseRanges vs) $ \translationId ranges ->
       -- TODO: Use IntervalSet to do only a single query for all relevant tags
       -- and then fan them back out to the appropriate clients.
@@ -48,7 +48,7 @@ viewSelectorHandler runTransaction vs = if vs == mempty then pure mempty else ru
         >>> (\(as, maps) -> (Seq.singleton as,) <$> maps)
     , _view_tags = flip fmap tags
         $   fold
-        >>> (\(a, map_) -> MMap.fromSet (const $ Seq.singleton a) <$> map_)
+        >>> (\(a, map_) -> MMap.fromSet (const (First Present, Seq.singleton a)) <$> map_)
     }
 
 getVersesInInterval :: TranslationId -> Interval VerseReference -> Transaction mode (MonoidalMap VerseReference Text)

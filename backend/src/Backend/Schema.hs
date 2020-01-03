@@ -12,7 +12,6 @@ module Backend.Schema where
 import Control.Monad.IO.Class (MonadIO (liftIO))
 import Control.Monad.Reader (ReaderT (..))
 import qualified Data.Aeson as Json
-import Data.Aeson.TH (deriveJSON)
 import Data.Aeson.GADT.TH (deriveJSONGADT)
 import Data.Constraint.Extras.TH (deriveArgDict)
 import Data.Dependent.Sum (DSum ((:=>)))
@@ -63,9 +62,6 @@ withDb f = liftIO $
         autoMigrate migrationBackend checkedPgDb
     f pool
 
-
-data Presence = Present | Absent deriving (Bounded, Enum, Eq, Generic, Show)
-deriveJSON Json.defaultOptions ''Presence
 
 data Notification a where
   Notification_Tag :: Notification (Presence, TagOccurrence)

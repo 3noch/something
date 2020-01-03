@@ -494,5 +494,8 @@ watchVerses rng = do
     { _viewSelector_verseRanges = MMap.singleton translationId $ MMap.singleton interval 1 }
   pure $ splitDynPure $ ffor2 rng result $ \(translationId, _interval) result' -> -- TODO: Filter out verses that fit interval?
     ( (fmap.fmap) (getFirst . snd) $ result' ^? view_verses . ix translationId
-    , maybe mempty (fmap MMap.keysSet) $ result' ^? view_tags . ix translationId
+    , maybe mempty (fmap $ MMap.keysSet . mapMaybe onlyPresent) $ result' ^? view_tags . ix translationId
     )
+  where
+    onlyPresent (First Present, v) = Just v
+    onlyPresent (First Absent, _) = Nothing
