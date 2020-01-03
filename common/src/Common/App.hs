@@ -35,11 +35,15 @@ import Rhyolite.App (PositivePart (positivePart), standardPositivePart)
 import Common.Prelude
 import Common.Schema
 
+-- | A simple pair describing the two endpoints of a closed interval.
+data ClosedInterval' a = ClosedInterval' !a !a
+  deriving (Eq, Generic, Ord, Show)
+  deriving anyclass (FromJSON, Json.FromJSONKey, ToJSON, Json.ToJSONKey)
+
 data TagOccurrence = TagOccurrence
   { _tagOccurrence_name :: !Text
   , _tagOccurrence_translation :: !TranslationId
-  , _tagOccurrence_start :: !(VerseReference, Int)
-  , _tagOccurrence_end :: !(VerseReference, Int)
+  , _tagOccurrence_interval :: !(ClosedInterval' (VerseReference, Int))
   } deriving (Eq, Generic, Ord, Show)
 deriveJSON Json.defaultOptions 'TagOccurrence
 
@@ -158,7 +162,7 @@ instance (Monoid a, Eq a) => Query (ViewSelector a) where
     where
       verseRanges = croppedIntersectionWith (croppedIntersectionWith const) (_viewSelector_verseRanges vs) (_view_verseRanges v)
 
--- Intersect a map from the viewselector and a map from the view to produce a cropped map for the view, dropping any key for which the entry is selected mempty (zero) times.
+-- Intersect a map from the ViewSelector and a map from the view to produce a cropped map for the view, dropping any key for which the entry is selected mempty (zero) times.
 croppedIntersectionWith :: (Ord k, Eq a, Monoid a) => (a -> b -> c) -> MonoidalMap k a -> MonoidalMap k b -> MonoidalMap k c
 croppedIntersectionWith f (MMap.MonoidalMap m) (MMap.MonoidalMap m') = MMap.MonoidalMap $
   Map.merge
@@ -185,15 +189,15 @@ rederiveVerses verseRanges verses = flip MMap.mapMaybeWithKey verses $ \k v ->
 rederiveTags
   :: forall translationId tagName a b. (Ord translationId)
   => MonoidalMap translationId (MonoidalMap (Interval VerseReference) a)
-  -> MonoidalMap translationId (MonoidalMap tagName (MonoidalMap (VerseReference, Int, VerseReference, Int) b))
-  -> MonoidalMap translationId (MonoidalMap tagName (MonoidalMap (VerseReference, Int, VerseReference, Int) (Seq a)))
+  -> MonoidalMap translationId (MonoidalMap tagName (MonoidalMap (ClosedInterval' (VerseReference, Int)) b))
+  -> MonoidalMap translationId (MonoidalMap tagName (MonoidalMap (ClosedInterval' (VerseReference, Int)) (Seq a)))
 rederiveTags verseRanges tags = flip MMap.mapMaybeWithKey tags $ \translationId tagNames ->
     let
       ranges :: IntervalMap (Interval VerseReference) a =
         maybe mempty (IntervalMap.fromDistinctAscList . MMap.toAscList) $ MMap.lookup translationId verseRanges
     in
       if null ranges then Nothing else nullToNothing $ flip MMap.mapMaybeWithKey tagNames $ \_ tagRanges ->
-        nullToNothing $ flip MMap.mapMaybeWithKey tagRanges $ \(ref1, _, ref2, _) _ ->
+        nullToNothing $ flip MMap.mapMaybeWithKey tagRanges $ \(ClosedInterval' (ref1, _) (ref2, _)) _ ->
           let correspondingRanges = ranges `IntervalMap.intersecting` ClosedInterval ref1 ref2
           in if null correspondingRanges then Nothing else Just $ Seq.fromList (IntervalMap.elems correspondingRanges)
 
@@ -202,7 +206,7 @@ data View a = View
   , _view_verseRanges :: !(MonoidalMap TranslationId (MonoidalMap (Interval VerseReference) a))
   , _view_verses :: !(MonoidalMap TranslationId (MonoidalMap VerseReference (Seq a, First Text)))
   -- TODO: This should probably use SemiMap to support deletions.
-  , _view_tags :: !(MonoidalMap TranslationId (MonoidalMap Text (MonoidalMap (VerseReference, Int, VerseReference, Int) (Seq a))))
+  , _view_tags :: !(MonoidalMap TranslationId (MonoidalMap Text (MonoidalMap (ClosedInterval' (VerseReference, Int)) (Seq a))))
   }
   deriving (Eq, Foldable, Functor, Generic)
 deriveJSON Json.defaultOptions 'View

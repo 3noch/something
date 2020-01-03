@@ -8,7 +8,7 @@ import Rhyolite.Backend.App (RequestHandler (..))
 
 import Backend.Schema
 import Backend.Transaction (Transaction, runQuery)
-import Common.App (PrivateRequest (..), PublicRequest (..), TagOccurrence (..))
+import Common.App (ClosedInterval' (..), PrivateRequest (..), PublicRequest (..), TagOccurrence (..))
 import Common.Prelude
 import Common.Schema
 
@@ -16,7 +16,7 @@ requestHandler :: (forall x. Transaction mode x -> m x) -> RequestHandler (ApiRe
 requestHandler runTransaction =
   RequestHandler $ runTransaction . \case
     ApiRequest_Public r -> case r of
-      PublicRequest_AddTag occurrence@(TagOccurrence tag translationId (startRef, startWord) (endRef, endWord)) -> do
+      PublicRequest_AddTag occurrence@(TagOccurrence tag translationId (ClosedInterval' (startRef, startWord) (endRef, endWord))) -> do
         runQuery $ do
           -- TODO: Add real unique indexs to get rid of this dance and just rely on the "on conflict" logic.
           existingTagT <- runSelectReturningList $ select $ do
@@ -51,7 +51,7 @@ requestHandler runTransaction =
 
         notify Notification_Tag (Added, occurrence)
 
-      PublicRequest_DeleteTag occurrence@(TagOccurrence tagName translationId (startRef, startWord) (endRef, endWord)) -> do
+      PublicRequest_DeleteTag occurrence@(TagOccurrence tagName translationId (ClosedInterval' (startRef, startWord) (endRef, endWord))) -> do
         runQuery $ do
           tagIds <- runSelectReturningList $ select $ do
             tag <- all_ (_dbTag db)

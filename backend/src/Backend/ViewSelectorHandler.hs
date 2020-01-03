@@ -7,7 +7,7 @@ import Database.Beam.Backend (BeamSqlBackend)
 
 import Backend.Schema
 import Backend.Transaction (Transaction, runQuery)
-import Common.App (View (..), ViewSelector (..))
+import Common.App (ClosedInterval' (..), View (..), ViewSelector (..))
 import Common.Prelude
 import Common.Schema
 import Data.IntervalMap.Interval (Interval (..))
@@ -63,8 +63,8 @@ getVersesInInterval translationId interval = fmap (MMap.fromDistinctAscList . ma
         (Pg.array_ [unBookId $ _verseBook verse, _verseChapter verse, _verseVerse verse])
       pure verse
 
-getTagsInInterval :: TranslationId -> Interval VerseReference -> Transaction mode (MonoidalMap Text (Set (VerseReference, Int, VerseReference, Int)))
-getTagsInInterval translationId interval = fmap (MMap.fromAscListWith (<>) . map (second Set.singleton)) $
+getTagsInInterval :: TranslationId -> Interval VerseReference -> Transaction mode (MonoidalMap Text (Set (ClosedInterval' (VerseReference, Int))))
+getTagsInInterval translationId interval = fmap (MMap.fromAscListWith (<>) . map (second $ Set.singleton . pairToClosedInterval)) $
   runQuery $ runSelectReturningList $ select $
     orderBy_ (\(tagName, _) -> asc_ tagName) -- Important for 'fromAscList' above.
     $ do
@@ -84,6 +84,8 @@ getTagsInInterval translationId interval = fmap (MMap.fromAscListWith (<>) . map
         ( _taggedrangeStart taggedRange, _taggedrangebywordStart taggedRangeByWord
         , _taggedrangeEnd taggedRange, _taggedrangebywordEnd taggedRangeByWord
         ) )
+  where
+    pairToClosedInterval (a, b, c, d) = ClosedInterval' (a, b) (c, d)
 
 verseReferenceToList :: VerseReferenceT f -> [Columnar f Int]
 verseReferenceToList x = [unBookId $ _versereferenceBook x, _versereferenceChapter x, _versereferenceVerse x]

@@ -227,11 +227,11 @@ versesToRanges
     verseWordsToInterval :: VerseReference -> Seq Text -> Interval (VerseReference, Int)
     verseWordsToInterval vref ws = ClosedInterval (vref, 0) (vref, length ws - 1)
 
-tagsToRanges :: MonoidalMap Text (Set (VerseReference, Int, VerseReference, Int)) -> IntervalMap WordInterval (Set Text)
+tagsToRanges :: MonoidalMap Text (Set (ClosedInterval' (VerseReference, Int))) -> IntervalMap WordInterval (Set Text)
 tagsToRanges tagMap = IntervalMap.fromListWith (<>)
   [ (ClosedInterval (vref1, w1) (vref2, w2), Set.singleton t)
   | (t, ranges) <- MMap.toList tagMap
-  , (vref1, w1, vref2, w2) <- toList ranges
+  , ClosedInterval' (vref1, w1) (vref2, w2) <- toList ranges
   ]
 
 verseWordMap :: IntervalMap WordInterval (Seq Text) -> IntervalMap WordInterval Text
@@ -358,9 +358,9 @@ appWidget referenceDyn = do
                 void $ listWithKey (Map.fromSet (,()) <$> tagNames) $ \tagName _ -> divClass "column is-full" $ do
                   text $ tagName <> " " <> showWordInterval tagRange
                   (e, ()) <- elAttr' "button" ("type"=:"button" <> "class"=:"button is-danger") (text "Delete")
-                  let ClosedInterval start end = tagRange
+                  let ClosedInterval start end = tagRange -- TODO: Partial match
                   void $ requestingIdentity $ ffor (domEvent Click e) $ \() ->
-                    public $ PublicRequest_DeleteTag $ TagOccurrence tagName defaultTranslation start end
+                    public $ PublicRequest_DeleteTag $ TagOccurrence tagName defaultTranslation $ ClosedInterval' start end
 
         pure (cursorMode_, selectedRanges_)
 
@@ -378,8 +378,7 @@ appWidget referenceDyn = do
         fmapMaybe id $ captureRange <$> current highlightState <@> wordClicked
 
     _ <- requestingIdentity $ ffor highlightFinished $ \(start, end) ->
-      public $ PublicRequest_AddTag $ TagOccurrence "test" defaultTranslation start end
-
+      public $ PublicRequest_AddTag $ TagOccurrence "test" defaultTranslation $ ClosedInterval' start end
 
     routeRangeDyn <- holdUniqDyn $ referenceToInterval . referenceToVerseReference <$> referenceDyn
     range <- foldDyn ($) (IntervalCO (VerseReferenceT (BookId 1) 1 1) (VerseReferenceT (BookId 1) 3 9999)) $ leftmost
@@ -403,7 +402,7 @@ appWidget referenceDyn = do
 
     versesWidget
       :: Dynamic t (Maybe (IntervalMap WordInterval (Seq Text)))
-      -> Dynamic t (MonoidalMap Text (Set (VerseReference, Int, VerseReference, Int)))
+      -> Dynamic t (MonoidalMap Text (Set (ClosedInterval' (VerseReference, Int))))
       -> Dynamic t (Maybe (IntervalMap WordInterval a))
       -> m ()
     versesWidget verseRanges' tags' selected = mdo
@@ -489,7 +488,7 @@ watchVerses
   :: (HasApp t m, MonadHold t m, MonadFix m)
   => Dynamic t (TranslationId, Interval VerseReference)
   -> m ( Dynamic t (Maybe (MonoidalMap VerseReference Text))
-       , Dynamic t (MonoidalMap Text (Set (VerseReference, Int, VerseReference, Int))))
+       , Dynamic t (MonoidalMap Text (Set (ClosedInterval' (VerseReference, Int)))))
 watchVerses rng = do
   result <- watchViewSelector $ ffor rng $ \(translationId, interval) -> mempty
     { _viewSelector_verseRanges = MMap.singleton translationId $ MMap.singleton interval 1 }
