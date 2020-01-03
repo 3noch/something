@@ -343,24 +343,26 @@ appWidget referenceDyn = do
 
         let tagRanges = tagsToRanges <$> tags -- TODO: We do this twice!
         let rangeSelected :: Event t (IntervalMap WordInterval (Set Text)) =
-              attachWith IntervalMap.containing ( current tagRanges) wordClicked
-        selectedRanges_ <- holdDyn Nothing $ leftmost
-          [ Nothing <$ mapMaybe (guard . (CursorMode_Select /=)) (updated cursorMode_)
-          , Just <$> rangeSelected
-          ]
-        selectedRanges_' <- maybeDyn selectedRanges_
-        dyn_ $ ffor selectedRanges_' $ \case
-          Nothing -> blank
-          Just selRanges -> do
-            el "h2" $ text "Tags"
-            divClass "columns" $
-              void $ listWithKey (Map.fromDistinctAscList . IntervalMap.toAscList <$> selRanges) $ \tagRange tagNames ->
-                void $ listWithKey (Map.fromSet (,()) <$> tagNames) $ \tagName _ -> divClass "column is-full" $ do
-                  text $ tagName <> " " <> showWordInterval tagRange
-                  (e, ()) <- elAttr' "button" ("type"=:"button" <> "class"=:"button is-danger") (text "Delete")
-                  let ClosedInterval start end = tagRange -- TODO: Partial match
-                  void $ requestingIdentity $ ffor (domEvent Click e) $ \() ->
-                    public $ PublicRequest_DeleteTag $ TagOccurrence tagName defaultTranslation $ ClosedInterval' start end
+              attachWith IntervalMap.containing (current tagRanges) wordClicked
+        rec
+          selectedRanges_ <- holdDyn Nothing $ leftmost
+            [ Nothing <$ mapMaybe (guard . (CursorMode_Select /=)) (updated cursorMode_)
+            , Nothing <$ tagDeleted
+            , Just <$> rangeSelected
+            ]
+          selectedRanges_' <- maybeDyn selectedRanges_
+          ((), tagDeleted) <- runEventWriterT $ dyn_ $ ffor selectedRanges_' $ \case
+            Nothing -> blank
+            Just selRanges -> do
+              el "h2" $ text "Tags"
+              divClass "columns" $
+                void $ listWithKey (Map.fromDistinctAscList . IntervalMap.toAscList <$> selRanges) $ \tagRange tagNames ->
+                  void $ listWithKey (Map.fromSet (,()) <$> tagNames) $ \tagName _ -> divClass "column is-full" $ do
+                    text $ tagName <> " " <> showWordInterval tagRange
+                    (e, ()) <- elAttr' "button" ("type"=:"button" <> "class"=:"button is-danger") (text "Delete")
+                    let ClosedInterval start end = tagRange -- TODO: Partial match
+                    tellEvent . (() <$) <=< requestingIdentity $ ffor (domEvent Click e) $ \() ->
+                      public $ PublicRequest_DeleteTag $ TagOccurrence tagName defaultTranslation $ ClosedInterval' start end
 
         pure (cursorMode_, selectedRanges_)
 
