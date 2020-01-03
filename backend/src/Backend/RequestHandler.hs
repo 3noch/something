@@ -49,7 +49,7 @@ requestHandler runTransaction =
                   }
               ])
 
-        notify Notification_Tag (Added, occurrence)
+        notify Notification_Tag (Present, occurrence)
 
       PublicRequest_DeleteTag occurrence@(TagOccurrence tagName translationId (ClosedInterval' (startRef, startWord) (endRef, endWord))) -> do
         runQuery $ do
@@ -71,7 +71,7 @@ requestHandler runTransaction =
             &&. _taggedrangebywordStart t ==. val_ startWord
             &&. _taggedrangebywordEnd t ==. val_ endWord
 
-        notify Notification_Tag (Deleted, occurrence)
+        notify Notification_Tag (Absent, occurrence)
 
 
     ApiRequest_Private _key r -> case r of

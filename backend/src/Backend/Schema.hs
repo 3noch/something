@@ -64,11 +64,11 @@ withDb f = liftIO $
     f pool
 
 
-data Change = Added | Deleted deriving (Bounded, Enum, Eq, Generic, Show)
-deriveJSON Json.defaultOptions ''Change
+data Presence = Present | Absent deriving (Bounded, Enum, Eq, Generic, Show)
+deriveJSON Json.defaultOptions ''Presence
 
 data Notification a where
-  Notification_Tag :: Notification (Change, TagOccurrence)
+  Notification_Tag :: Notification (Presence, TagOccurrence)
 deriving instance Show (Notification a)
 fmap concat $ sequence
   [ deriveJSONGADT ''Notification
