@@ -20,8 +20,8 @@ library
     , obelisk-generated-static
     , obelisk-route
     , reflex-dom-core
-    , rhyolite-frontend
     , rhyolite-common
+    , rhyolite-frontend
     , text
     , these
   exposed-modules:
