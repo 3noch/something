@@ -295,6 +295,11 @@ showWordInterval = \case
     s (VerseReferenceT _ c v, w) = tshow c <> ":" <> tshow v <> (if w == 0 then "" else "#" <> tshow w)
     irregular l r a b = l <> s a <> ", " <> s b <> r
 
+validateText :: Text -> Maybe Text
+validateText x = case T.strip x of
+  x' | T.null x' -> Nothing
+     | otherwise -> Just x'
+
 appWidget
   :: forall m js t. (HasApp t m, DomBuilder t m, PostBuild t m, MonadHold t m, MonadFix m, Prerender js t m)
   => Dynamic t (Canon, Maybe (Int, Maybe Int))
@@ -332,7 +337,7 @@ appWidget referenceDyn = do
           (fromMaybe mempty <$> current verses)
           wordClickedRaw
 
-    (cursorMode, selectedRanges) <- divClass "columns" $ do
+    (cursorMode, selectedRanges, currentTagName) <- divClass "columns" $ do
       divClass "column is-two-thirds" $
         versesWidget verseRanges tags selectedRanges
       divClass "column" $ do
@@ -340,6 +345,12 @@ appWidget referenceDyn = do
           toggleButtons CursorMode_Select [CursorMode_Select, CursorMode_Highlight] $ text . \case
             CursorMode_Select -> "Select"
             CursorMode_Highlight -> "Highlight"
+
+        currentTagName_ <- holdUniqDyn <=< fmap join $ holdDyn (constDyn Nothing) <=< dyn $ ffor cursorMode_ $ \case
+          CursorMode_Select -> pure (constDyn Nothing)
+          CursorMode_Highlight -> do
+            inputEl <- inputElement $ def & initialAttributes .~ ("class"=:"input" <> "type"=:"text" <> "placeholder"=:"Tag")
+            pure $ validateText <$> value inputEl
 
         let tagRanges = tagsToRanges <$> tags -- TODO: We do this twice!
         let rangeSelected :: Event t (IntervalMap WordInterval (Set Text)) =
@@ -361,10 +372,12 @@ appWidget referenceDyn = do
                     text $ tagName <> " " <> showWordInterval tagRange
                     (e, ()) <- elAttr' "button" ("type"=:"button" <> "class"=:"button is-danger") (text "Delete")
                     let ClosedInterval start end = tagRange -- TODO: Partial match
-                    tellEvent . (() <$) <=< requestingIdentity $ ffor (domEvent Click e) $ \() ->
+                    let deleteClicked = domEvent Click e
+                    tellEvent deleteClicked
+                    void $ requestingIdentity $ ffor deleteClicked $ \() ->
                       public $ PublicRequest_DeleteTag $ TagOccurrence tagName defaultTranslation $ ClosedInterval' start end
 
-        pure (cursorMode_, selectedRanges_)
+        pure (cursorMode_, selectedRanges_, currentTagName_)
 
     highlightState <- foldDyn ($) Nothing $ leftmost
       [ const Nothing <$ mapMaybe (guard . (CursorMode_Highlight /=)) (updated cursorMode)
@@ -379,8 +392,11 @@ appWidget referenceDyn = do
       highlightFinished :: Event t ((VerseReference, Int), (VerseReference, Int)) =
         fmapMaybe id $ captureRange <$> current highlightState <@> wordClicked
 
-    _ <- requestingIdentity $ ffor highlightFinished $ \(start, end) ->
-      public $ PublicRequest_AddTag $ TagOccurrence "test" defaultTranslation $ ClosedInterval' start end
+    let highlightFinishedWithTagName = mapMaybe
+          (\(a, b) -> liftA2 (,) a (Just b))
+          (attach (current currentTagName) highlightFinished)
+    _ <- requestingIdentity $ ffor highlightFinishedWithTagName $ \(tagName, (start, end)) ->
+      public $ PublicRequest_AddTag $ TagOccurrence tagName defaultTranslation $ ClosedInterval' start end
 
     routeRangeDyn <- holdUniqDyn $ referenceToInterval . referenceToVerseReference <$> referenceDyn
     range <- foldDyn ($) (IntervalCO (VerseReferenceT (BookId 1) 1 1) (VerseReferenceT (BookId 1) 3 9999)) $ leftmost
