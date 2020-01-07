@@ -7,6 +7,11 @@
 module Frontend where
 
 import Control.Lens (Prism', ix, prism', re)
+import Data.Colour.SRGB (RGB(..), toSRGB24)
+import Control.Monad.Trans.Random.Lazy (runRandT)
+import Data.Colour.Palette.RandomColor (randomColor)
+import Data.Colour.Palette.Types (Hue(..), Luminosity(..))
+import Data.Hashable (hash)
 import qualified Data.IntervalMap.Generic.Strict as IntervalMap
 import Data.IntervalMap.Generic.Strict (IntervalMap)
 import Data.IntervalMap.Interval (Interval (..))
@@ -26,6 +31,7 @@ import Obelisk.Route.Frontend
 import Reflex.Dom.Core
 import Rhyolite.Api (ApiRequest, public)
 import Rhyolite.Frontend.App (RhyoliteWidget, functorToWire, runObeliskRhyoliteWidget, watchViewSelector)
+import System.Random (mkStdGen)
 import Text.Read (readMaybe)
 
 import Obelisk.Generated.Static
@@ -444,14 +450,26 @@ appWidget referenceDyn = do
               _ -> blank
             let
               wordsDyn = T.intercalate " " . map snd . IntervalMap.toAscList . (`IntervalMap.intersecting` k) <$> wordMap
-              isHighlighted = not . null . (`IntervalMap.intersecting` k) <$> tagRanges
+              relevantTags = (`IntervalMap.intersecting` k) <$> tagRanges
               isSelected = maybe False (not . null . (`IntervalMap.intersecting` k)) <$> selected
 
-            color <- holdUniqDyn $ ffor2 isHighlighted isSelected $ \h s -> if s then Just "pink" else if h then Just "yellow" else Nothing
+
+            colorSeed :: Dynamic t (Maybe Int) <- holdUniqDyn
+              $   fmap (hash . T.concat . toList) . nonEmpty . Set.toAscList . fold
+              <$> relevantTags
+
+            color <- holdUniqDyn $ ffor2 isSelected colorSeed $ \sel colorSeed' ->
+              if sel then Just ("pink", "black")
+              else ffor colorSeed' $ \seed -> let
+                RGB r g b = toSRGB24 $ fst $ runIdentity $ flip runRandT (mkStdGen seed) $ randomColor HueRandom LumDark
+                -- Credit: https://stackoverflow.com/a/1855903/503377
+                luminance :: Double = (0.299 * fromIntegral r + 0.587 * fromIntegral g + 0.114 * fromIntegral b)/255;
+              in ("rgb(" <> tshow r <> "," <> tshow g <> "," <> tshow b <> ")", if luminance > 0.5 then "black" else "white")
+
             let
               styleDyn = ffor color $ \c' ->
                 "data-start" =: startingEndpoint ^. re wordStartingEndpointEncoding <>
-                maybe mempty (\c -> "style" =: ("background-color:" <> c <> ";")) c'
+                maybe mempty (\(backColor, frontColor) -> "style" =: ("background-color:" <> backColor <> ";" <> "color:" <> frontColor <> ";")) c'
             text " "
             elDynAttr "span" styleDyn $ dynTextStrict wordsDyn
 
