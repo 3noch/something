@@ -461,7 +461,7 @@ appWidget referenceDyn = do
             color <- holdUniqDyn $ ffor2 isSelected colorSeed $ \sel colorSeed' ->
               if sel then Just ("pink", "black")
               else ffor colorSeed' $ \seed -> let
-                RGB r g b = toSRGB24 $ fst $ runIdentity $ flip runRandT (mkStdGen seed) $ randomColor HueRandom LumDark
+                RGB r g b = toSRGB24 $ fst $ runIdentity $ flip runRandT (mkStdGen seed) $ randomColor HueRandom LumBright
                 -- Credit: https://stackoverflow.com/a/1855903/503377
                 luminance :: Double = (0.299 * fromIntegral r + 0.587 * fromIntegral g + 0.114 * fromIntegral b)/255;
               in ("rgb(" <> tshow r <> "," <> tshow g <> "," <> tshow b <> ")", if luminance > 0.5 then "black" else "white")
