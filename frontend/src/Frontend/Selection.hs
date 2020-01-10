@@ -14,7 +14,10 @@ import qualified GHCJS.DOM.Window as Window
 import Language.Javascript.JSaddle.Object (js)
 import Reflex.Dom.Core (
     Event, Prerender,
-    ffor, mapMaybe, never, performEvent, prerender, switchDyn, wrapDomEvent, delay
+    ffor, mapMaybe, never, performEvent, prerender, switchDyn, wrapDomEvent,
+#   if !defined(ghcjs_HOST_OS)
+      delay
+#   endif
   )
 
 import Control.Exception (SomeException)
@@ -27,7 +30,7 @@ selectionStart = fmap switchDyn $ prerender (pure never) $ do
   -- In JSaddle calling 'getSelection' must be delayed by a frame in order to get
   -- the most recent result. However it doesn't have this problem in native GHCJS.
 #if defined(ghcjs_HOST_OS)
-  let selectedStart = selectStarted'
+  let selectStarted = selectStarted'
 #else
   selectStarted <- delay 0 selectStarted'
 #endif

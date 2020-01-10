@@ -455,7 +455,7 @@ appWidget referenceDyn = do
 
 
             colorSeed :: Dynamic t (Maybe Int) <- holdUniqDyn
-              $   fmap (hash . T.concat . toList) . nonEmpty . Set.toAscList . fold
+              $   fmap (hash . T.intercalate "," . toList) . nonEmpty . Set.toAscList . fold
               <$> relevantTags
 
             color <- holdUniqDyn $ ffor2 isSelected colorSeed $ \sel colorSeed' ->
@@ -497,7 +497,7 @@ toggleButtons v0 options showOption = do
         (ffor currentOption $ \co -> "class"=:(if co == o then "button" else "button is-light") <> "type"=:"button")
         (showOption o)
       pure $ domEvent Click e $> o
-    currentOption <- holdDyn v0 $ leftmost clickOptions -- TODO: Use demux for this
+    currentOption <- holdUniqDyn <=< holdDyn v0 $ leftmost clickOptions
   pure currentOption
 
 

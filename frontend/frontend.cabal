@@ -16,6 +16,7 @@ library
     , IntervalMap
     , jsaddle
     , lens
+    , MonadRandom
     , monoidal-containers
     , obelisk-executable-config-lookup
     , obelisk-frontend
