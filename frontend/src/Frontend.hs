@@ -535,3 +535,14 @@ watchVerses rng = do
   where
     onlyPresent (First Present, v) = Just v
     onlyPresent (First Absent, _) = Nothing
+
+watchTagNotes
+  :: (HasApp t m, MonadHold t m, MonadFix m)
+  => Dynamic t (Text, ClosedInterval' (VerseReference, Int))
+  -> m (Dynamic t (Maybe (Seq Text)))
+watchTagNotes kDyn = do
+  resultDyn <- watchViewSelector $ ffor kDyn $ \k -> mempty
+    { _viewSelector_tagNotes = MMap.singleton k 1 }
+  pure $ ffor2 kDyn resultDyn $ \k result ->
+    fmap (getFirst . snd) (result ^? view_tagNotes . ix k)
+

@@ -8,8 +8,7 @@ import Data.Text (Text)
 import qualified Data.Text as T
 import Database.Beam (Beamable, Columnar, PrimaryKey, Table (primaryKey))
 import Database.Beam.Backend.SQL.Types (SqlSerial)
-import GHC.Generics (Generic)
-
+import Data.Time (LocalTime)
 import Common.Prelude
 
 -------------------------------------------------------------------------------
@@ -124,7 +123,6 @@ instance FromJSON VerseReference
 instance ToJSON VerseReference
 instance Json.ToJSONKey VerseReference
 instance Json.FromJSONKey VerseReference
-
 -------------------------------------------------------------------------------
 
 
@@ -140,7 +138,6 @@ instance Table TaggedRangeT where
   primaryKey = TaggedRangeId <$> _taggedrangeId
 -------------------------------------------------------------------------------
 
-
 -------------------------------------------------------------------------------
 data TaggedRangeByWordT f = TaggedRangeByWordT
   { _taggedrangebywordForRange :: PrimaryKey TaggedRangeT f
@@ -153,6 +150,17 @@ instance Table TaggedRangeByWordT where
   primaryKey = TaggedRangeByWordId <$> _taggedrangebywordForRange <*> _taggedrangebywordForTranslation
 -------------------------------------------------------------------------------
 
+-------------------------------------------------------------------------------
+data TaggedRangeNoteT f = TaggedRangeNoteT
+  { _taggedrangenoteId :: Columnar f (SqlSerial Int)
+  , _taggedrangenoteForRange :: PrimaryKey TaggedRangeT f
+  , _taggedrangenoteContent :: Columnar f Text
+  , _taggedrangenoteUpdated :: Columnar f LocalTime
+  } deriving (Generic, Beamable)
+instance Table TaggedRangeNoteT where
+  newtype PrimaryKey TaggedRangeNoteT f = TaggedRangeNoteId (Columnar f (SqlSerial Int)) deriving stock Generic deriving anyclass Beamable
+  primaryKey = TaggedRangeNoteId <$> _taggedrangenoteId
+-------------------------------------------------------------------------------
 
 -------------------------------------------------------------------------------
 data Presence = Present | Absent

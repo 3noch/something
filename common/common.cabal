@@ -23,6 +23,7 @@ library
     , reflex
     , semialign
     , text
+    , time
     , these
     , universe
     , witherable

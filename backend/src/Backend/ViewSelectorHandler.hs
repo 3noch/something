@@ -1,6 +1,7 @@
 {-# LANGUAGE FlexibleContexts #-}
 module Backend.ViewSelectorHandler where
 
+import Control.Arrow ((***))
 import Data.Semigroup (First (..))
 import Database.Beam
 import Database.Beam.Backend (BeamSqlBackend)
@@ -13,6 +14,7 @@ import Common.Schema
 import Data.IntervalMap.Interval (Interval (..))
 import qualified Data.Map.Monoidal as MMap
 import qualified Data.Set as Set
+import Data.Sequence (Seq)
 import qualified Data.Sequence as Seq
 import qualified Database.Beam.Postgres as Pg
 
@@ -38,9 +40,16 @@ viewSelectorHandler runTransaction vs = if vs == mempty then pure mempty else ru
       ifor ranges $ \range a ->
         (a,) <$> getTagsInInterval translationId range
 
+  tagNotes' <- getTaggedRangeNotes $ MMap.keysSet $ _viewSelector_tagNotes vs
+  let
+    tagNotes = flip MMap.mapMaybeWithKey tagNotes' $ \k v -> do
+      a <- MMap.lookup k $ _viewSelector_tagNotes vs
+      Just (a, First v)
+
   pure $ View
     { _view_translations = translations
     , _view_verseRanges = (fmap.fmap) fst verses
+    , _view_tagNotes = tagNotes
     -- TODO: Just look at this. No one wants to read this...let alone understand it. I had to "type hole" my way to this...
     , _view_verses = flip fmap verses
         $   fmap (\(a, text) -> (a, fmap First text))
@@ -68,24 +77,44 @@ getTagsInInterval translationId interval = fmap (MMap.fromAscListWith (<>) . map
   runQuery $ runSelectReturningList $ select $
     orderBy_ (\(tagName, _) -> asc_ tagName) -- Important for 'fromAscList' above.
     $ do
-      taggedRange <- all_ $ _dbTaggedRange db
-      taggedRangeByWord <- join_ (_dbTaggedRangeByWord db) (\x -> _taggedrangebywordForRange x `references_` taggedRange)
+      (tag, taggedRange, taggedRangeByWord) <- allTagsAndRelated
+      guardTagsByIntervals taggedRange $ Set.singleton interval
       guard_ (_taggedrangebywordForTranslation taggedRangeByWord ==. val_ translationId)
-
-      tag <- join_ (_dbTag db) (\x -> _taggedrangeForTag taggedRange `references_` x)
-
-      let intervalArray = fmap (Pg.array_ . map val_ . verseReferenceToList) interval
-      guard_ $
-        withinInterval_ intervalArray (Pg.array_ $ verseReferenceToList $ _taggedrangeStart taggedRange)
-        ||.
-        withinInterval_ intervalArray (Pg.array_ $ verseReferenceToList $ _taggedrangeEnd taggedRange)
-
       pure (_tagName tag,
         ( _taggedrangeStart taggedRange, _taggedrangebywordStart taggedRangeByWord
         , _taggedrangeEnd taggedRange, _taggedrangebywordEnd taggedRangeByWord
         ) )
   where
     pairToClosedInterval (a, b, c, d) = ClosedInterval' (a, b) (c, d)
+
+allTagsAndRelated
+  :: Q Pg.Postgres Db s
+      ( TagT (QExpr Pg.Postgres s)
+      , TaggedRangeT (QExpr Pg.Postgres s)
+      , TaggedRangeByWordT (QExpr Pg.Postgres s)
+      )
+allTagsAndRelated = do
+  taggedRange <- all_ $ _dbTaggedRange db
+  taggedRangeByWord <- join_ (_dbTaggedRangeByWord db) (\x -> _taggedrangebywordForRange x `references_` taggedRange)
+  tag <- join_ (_dbTag db) (\x -> _taggedrangeForTag taggedRange `references_` x)
+  pure (tag, taggedRange, taggedRangeByWord)
+
+
+guardTagsByIntervals
+  :: ( Foldable f
+     , Columnar t Int ~ QGenExpr QValueContext Pg.Postgres s Int
+     )
+  => TaggedRangeT t
+  -> f (Interval VerseReference) -> Q Pg.Postgres db s ()
+guardTagsByIntervals taggedRange intervals =
+  guard_ $ foldl' (||.) (val_ True) $ do
+    interval <- toList intervals
+    let intervalArray = fmap (Pg.array_ . map val_ . verseReferenceToList) interval
+    pure (
+      withinInterval_ intervalArray (Pg.array_ $ verseReferenceToList $ _taggedrangeStart taggedRange)
+      ||.
+      withinInterval_ intervalArray (Pg.array_ $ verseReferenceToList $ _taggedrangeEnd taggedRange)
+      )
 
 verseReferenceToList :: VerseReferenceT f -> [Columnar f Int]
 verseReferenceToList x = [unBookId $ _versereferenceBook x, _versereferenceChapter x, _versereferenceVerse x]
@@ -96,3 +125,28 @@ withinInterval_ interval b = case interval of
   ClosedInterval a c -> between_ b a c
   OpenInterval a c -> a <. b &&. b <. c
   IntervalOC a c -> a <. b &&. b <=. c
+
+getTaggedRangeNotes :: Set (Text, ClosedInterval' (VerseReference, Int)) -> Transaction mode (MonoidalMap (Text, ClosedInterval' (VerseReference, Int)) (Seq Text))
+getTaggedRangeNotes tags = fmap (MMap.fromListWith (<>) . map (tuplesToKey *** Seq.singleton)) $
+  runQuery $ runSelectReturningList $ select $ do
+    (tag, taggedRange, taggedRangeByWord) <- allTagsAndRelated
+    guard_ (_tagName tag `in_` map (val_ . fst) (toList tags))
+    guard_ $ foldl' (||.) (val_ True) $ do
+      (_, ClosedInterval' (ref1, word1) (ref2, word2)) <- toList tags
+      pure
+       $   _taggedrangeStart taggedRange ==. val_ ref1
+       &&. _taggedrangeEnd taggedRange ==. val_ ref2
+       &&. _taggedrangebywordStart taggedRangeByWord ==. val_ word1
+       &&. _taggedrangebywordEnd taggedRangeByWord ==. val_ word2
+
+    taggedRangeNote <- join_ (_dbTaggedRangeNote db) (\x -> _taggedrangenoteForRange x `references_` taggedRange)
+    let
+      k =
+        ( _tagName tag
+        , ( _taggedrangeStart taggedRange, _taggedrangebywordStart taggedRangeByWord
+          , _taggedrangeEnd taggedRange, _taggedrangebywordEnd taggedRangeByWord
+          )
+        )
+    pure (k, _taggedrangenoteContent taggedRangeNote)
+  where
+    tuplesToKey (name, (a, b, c, d)) = (name, ClosedInterval' (a, b) (c, d))
