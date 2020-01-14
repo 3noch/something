@@ -7,13 +7,14 @@
     # config.android_sdk.accept_license = false;
   }
 , projectOverrides ? {}
+, withHoogle ? false
 }:
 with obelisk;
 project ./. ({ hackGet, pkgs, ... }:
   let
     beamSrc = hackGet dep/beam;
-    gargoyleSrc = hackGet dep/gargoyle;
   in {
+  inherit withHoogle;
   android.applicationId = "systems.obsidian.obelisk.examples.minimal";
   android.displayName = "Obelisk Minimal Example";
   ios.bundleIdentifier = "systems.obsidian.obelisk.examples.minimal";
@@ -27,5 +28,5 @@ project ./. ({ hackGet, pkgs, ... }:
 
   overrides = self: super: {
     beam-postgres = pkgs.haskell.lib.dontCheck super.beam-postgres;  # Requires PG to run tests
-  } // import gargoyleSrc self;
+  };
 } // projectOverrides)
