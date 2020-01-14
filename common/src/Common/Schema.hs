@@ -160,6 +160,13 @@ data TaggedRangeNoteT f = TaggedRangeNoteT
 instance Table TaggedRangeNoteT where
   newtype PrimaryKey TaggedRangeNoteT f = TaggedRangeNoteId (Columnar f (SqlSerial Int)) deriving stock Generic deriving anyclass Beamable
   primaryKey = TaggedRangeNoteId <$> _taggedrangenoteId
+
+type TaggedRangeNoteId = PrimaryKey TaggedRangeNoteT Identity
+deriving instance Eq TaggedRangeNoteId
+deriving instance Ord TaggedRangeNoteId
+deriving instance Show TaggedRangeNoteId
+instance FromJSON TaggedRangeNoteId
+instance ToJSON TaggedRangeNoteId
 -------------------------------------------------------------------------------
 
 -------------------------------------------------------------------------------

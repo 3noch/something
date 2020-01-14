@@ -130,15 +130,7 @@ getTaggedRangeNotes :: Set (Text, ClosedInterval' (VerseReference, Int)) -> Tran
 getTaggedRangeNotes tags = fmap (MMap.fromListWith (<>) . map (tuplesToKey *** Seq.singleton)) $
   runQuery $ runSelectReturningList $ select $ do
     (tag, taggedRange, taggedRangeByWord) <- allTagsAndRelated
-    guard_ (_tagName tag `in_` map (val_ . fst) (toList tags))
-    guard_ $ foldl' (||.) (val_ True) $ do
-      (_, ClosedInterval' (ref1, word1) (ref2, word2)) <- toList tags
-      pure
-       $   _taggedrangeStart taggedRange ==. val_ ref1
-       &&. _taggedrangeEnd taggedRange ==. val_ ref2
-       &&. _taggedrangebywordStart taggedRangeByWord ==. val_ word1
-       &&. _taggedrangebywordEnd taggedRangeByWord ==. val_ word2
-
+    guardExactTagRangeMatches tags tag taggedRange taggedRangeByWord
     taggedRangeNote <- join_ (_dbTaggedRangeNote db) (\x -> _taggedrangenoteForRange x `references_` taggedRange)
     let
       k =
@@ -150,3 +142,27 @@ getTaggedRangeNotes tags = fmap (MMap.fromListWith (<>) . map (tuplesToKey *** S
     pure (k, _taggedrangenoteContent taggedRangeNote)
   where
     tuplesToKey (name, (a, b, c, d)) = (name, ClosedInterval' (a, b) (c, d))
+
+guardExactTagRangeMatches
+  :: ( SqlIn (QGenExpr QValueContext Pg.Postgres s) (Columnar f1 Text)
+     , SqlEq (QGenExpr QValueContext Pg.Postgres s) (Columnar f2 Int)
+     , SqlEq (QGenExpr QValueContext Pg.Postgres s) (VerseReferenceT f3)
+     , SqlValable (Columnar f1 Text), SqlValable (Columnar f2 Int)
+     , SqlValable (VerseReferenceT f3), HaskellLiteralForQExpr (Columnar f1 Text) ~ Text
+     , HaskellLiteralForQExpr (VerseReferenceT f3) ~ VerseReferenceT Identity
+     , HaskellLiteralForQExpr (Columnar f2 Int) ~ Int
+     )
+  => Set (Text, ClosedInterval' (VerseReference, Int))
+  -> TagT f1
+  -> TaggedRangeT f3
+  -> TaggedRangeByWordT f2
+  -> Q Pg.Postgres db s ()
+guardExactTagRangeMatches (tags :: Set (Text, ClosedInterval' (VerseReference, Int))) tag taggedRange taggedRangeByWord = do
+  guard_ (_tagName tag `in_` map (val_ . fst) (toList tags))
+  guard_ $ foldl' (||.) (val_ True) $ do
+    (_, ClosedInterval' (ref1, word1) (ref2, word2)) <- toList tags
+    pure
+      $   _taggedrangeStart taggedRange ==. val_ ref1
+      &&. _taggedrangeEnd taggedRange ==. val_ ref2
+      &&. _taggedrangebywordStart taggedRangeByWord ==. val_ word1
+      &&. _taggedrangebywordEnd taggedRangeByWord ==. val_ word2

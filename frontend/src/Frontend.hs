@@ -349,16 +349,15 @@ appWidget referenceDyn = do
       divClass "column is-two-thirds" $
         versesWidget verseRanges tagRanges selectedRanges
       divClass "column" $ do
-        cursorMode_ <- divClass "columns" $
-          toggleButtons CursorMode_Select [CursorMode_Select, CursorMode_Highlight] $ text . \case
-            CursorMode_Select -> "Select"
-            CursorMode_Highlight -> "Highlight"
+        cursorMode_ :: Dynamic t CursorMode <- divClass "tabs is-toggle is-fullwidth is-small" $ el "ul" $
+          toggleTabList CursorMode_Select [CursorMode_Select, CursorMode_Highlight] $ text . \case
+             CursorMode_Select -> "Select"
+             CursorMode_Highlight -> "Highlight"
 
-        currentTagName_ <- holdUniqDyn <=< fmap join $ holdDyn (constDyn Nothing) <=< dyn $ ffor cursorMode_ $ \case
-          CursorMode_Select -> pure (constDyn Nothing)
-          CursorMode_Highlight -> do
-            inputEl <- inputElement $ def & initialAttributes .~ ("class"=:"input" <> "type"=:"text" <> "placeholder"=:"Tag")
-            pure $ validateText <$> value inputEl
+        currentTagName_ <- elDynAttr "div" (ffor cursorMode_ $ \cm -> "class" =: "column" <> if cm /= CursorMode_Highlight then "style" =: "display:none;" else mempty) $ do
+          inputEl <- inputElement $ def & initialAttributes .~ ("class"=:"input" <> "type"=:"text" <> "placeholder"=:"Tag")
+          let inputValue = validateText <$> value inputEl
+          holdUniqDyn $ ffor2 inputValue cursorMode_ $ \v cm -> if cm == CursorMode_Highlight then v else Nothing
 
         let rangeSelected :: Event t (IntervalMap WordInterval (Set Text)) =
               attachWith IntervalMap.containing (current tagRanges) wordClicked
@@ -383,6 +382,24 @@ appWidget referenceDyn = do
                     tellEvent deleteClicked
                     void $ requestingIdentity $ ffor deleteClicked $ \() ->
                       public $ PublicRequest_DeleteTag $ TagOccurrence tagName defaultTranslation $ ClosedInterval' start end
+
+                    let uniqTagRange = (tagName, ClosedInterval' start end)
+                    notesDyn <- (fmap.fmap.fmap) (T.strip . T.unlines . toList) $ watchTagNotes $ constDyn uniqTagRange
+                    rec
+                      let
+                        serverIsBetter txtBox server = T.length txtBox < T.length server -- TODO: Use timestamps instead!
+                        newValueFromServer
+                          = mapMaybe (\(txtBox, serverValue) -> if serverIsBetter txtBox serverValue then Just serverValue else Nothing)
+                          $ attach (current notesText)
+                          $ mapMaybe id (updated notesDyn)
+                      notesText <- holdUniqDyn <=< fmap value $ textAreaElement $ def
+                        & initialAttributes .~ ("class"=:"textarea" <> "type"=:"text" <> "placeholder"=:"Notes")
+                        & textAreaElementConfig_initialValue .~ ""
+                        & textAreaElementConfig_setValue .~ newValueFromServer
+
+                    notesTextDebounced <- switchDyn <$> prerender (pure never) (debounce 2 (updated notesText))
+                    void $ requestingIdentity $ ffor notesTextDebounced $ \content ->
+                      public $ PublicRequest_SetNotes uniqTagRange (T.strip content)
 
         pure (cursorMode_, selectedRanges_, currentTagName_)
 
@@ -452,7 +469,6 @@ appWidget referenceDyn = do
               relevantTags = (`IntervalMap.intersecting` k) <$> tagRanges
               isSelected = maybe False (not . null . (`IntervalMap.intersecting` k)) <$> selected
 
-
             colorSeed :: Dynamic t (Maybe Int) <- holdUniqDyn
               $   fmap (hash . T.intercalate "," . toList) . nonEmpty . Set.toAscList . fold
               <$> relevantTags
@@ -488,13 +504,13 @@ wordStartingEndpointEncoding = prism'
     _ -> Nothing
   )
 
-toggleButtons :: (DomBuilder t m, MonadFix m, MonadHold t m, PostBuild t m, Eq a) => a -> [a] -> (a -> m ()) -> m (Dynamic t a)
-toggleButtons v0 options showOption = do
+toggleTabList :: (DomBuilder t m, MonadFix m, MonadHold t m, PostBuild t m, Eq a) => a -> [a] -> (a -> m ()) -> m (Dynamic t a)
+toggleTabList v0 options showOption = do
   rec
     clickOptions <- for options $ \o -> do
-      (e, ()) <- elDynAttr' "button"
-        (ffor currentOption $ \co -> "class"=:(if co == o then "button" else "button is-light") <> "type"=:"button")
-        (showOption o)
+      (e, ()) <- elDynAttr' "li"
+        (ffor currentOption $ \co -> if co == o then "class"=:"is-active" else mempty)
+        (el "a" $ showOption o)
       pure $ domEvent Click e $> o
     currentOption <- holdUniqDyn <=< holdDyn v0 $ leftmost clickOptions
   pure currentOption

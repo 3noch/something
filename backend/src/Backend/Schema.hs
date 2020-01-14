@@ -33,7 +33,7 @@ import Rhyolite.Backend.Listen (NotificationType (..), DbNotification (..), noti
 import Rhyolite.Schema (SchemaName (..))
 
 import Backend.Transaction (Transaction (..))
-import Common.App (TagOccurrence)
+import Common.App (ClosedInterval', TagOccurrence)
 import Common.Prelude
 import Common.Schema
 
@@ -66,6 +66,7 @@ withDb f = liftIO $
 
 data Notification a where
   Notification_Tag :: Notification (Presence, TagOccurrence)
+  Notification_SetNotes :: Notification ((Text, ClosedInterval' (VerseReference, Int)), TaggedRangeNoteId)
 deriving instance Show (Notification a)
 fmap concat $ sequence
   [ deriveJSONGADT ''Notification

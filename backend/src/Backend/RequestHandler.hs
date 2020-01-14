@@ -3,11 +3,13 @@ module Backend.RequestHandler where
 import Database.Beam
 import qualified Database.Beam.Postgres as Pg
 import qualified Database.Beam.Backend.SQL.BeamExtensions as Ext
+import qualified Data.Set as Set
 import Rhyolite.Api (ApiRequest (..))
 import Rhyolite.Backend.App (RequestHandler (..))
 
 import Backend.Schema
 import Backend.Transaction (Transaction, runQuery)
+import qualified Backend.ViewSelectorHandler as VSH
 import Common.App (ClosedInterval' (..), PrivateRequest (..), PublicRequest (..), TagOccurrence (..))
 import Common.Prelude
 import Common.Schema
@@ -73,6 +75,26 @@ requestHandler runTransaction =
 
         notify Notification_Tag (Absent, occurrence)
 
+      PublicRequest_SetNotes tag notes -> do
+        tagRangeIdAndNote' <- runQuery $ runSelectReturningOne $ select $ limit_ 1 $ do
+          (tagT, taggedRange, taggedRangeByWord) <- VSH.allTagsAndRelated
+          VSH.guardExactTagRangeMatches (Set.singleton tag) tagT taggedRange taggedRangeByWord
+          note <- leftJoin_ (all_ $ _dbTaggedRangeNote db) (\x -> _taggedrangenoteForRange x `references_` taggedRange)
+          pure (_taggedrangeId taggedRange, note)
+        for_ tagRangeIdAndNote' $ \(tagRangeId, existingNote') -> do
+          newNote <- fmap (fromMaybe (error "WAT") . listToMaybe) $ case existingNote' of
+            Nothing -> runQuery $ Ext.runInsertReturningList $ insert (_dbTaggedRangeNote db) $ insertExpressions
+              [ TaggedRangeNoteT
+                  { _taggedrangenoteId = default_
+                  , _taggedrangenoteForRange = val_ (TaggedRangeId tagRangeId)
+                  , _taggedrangenoteContent = val_ notes
+                  , _taggedrangenoteUpdated = Pg.now_
+                  }
+              ]
+            Just existing -> ([existing] <$) $ runQuery $ runUpdate $ update (_dbTaggedRangeNote db)
+              (\x -> mconcat [ _taggedrangenoteContent x <-. val_ notes, _taggedrangenoteUpdated x <-. Pg.now_ ])
+              (\x -> pk x ==. val_ (pk existing))
+          notify Notification_SetNotes (tag, pk newNote)
 
     ApiRequest_Private _key r -> case r of
       PrivateRequest_NoOp -> return ()
