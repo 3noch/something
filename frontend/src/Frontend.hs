@@ -327,7 +327,9 @@ appWidget referenceDyn = do
 
   rec
     (verses, tags) <- watchVerses $ (defaultTranslation,) <$> range
-    let verseRanges = fmap versesToRanges <$> verses
+    let
+      verseRanges = fmap versesToRanges <$> verses
+      tagRanges = tagsToRanges <$> tags
 
     let wordClicked :: Event t (VerseReference, Int) = attachWithMaybe
           (\vs (IntervalEndpoint (vref, rangeStartWordIndex) _ _, CharacterIndex charIndex) -> do
@@ -345,7 +347,7 @@ appWidget referenceDyn = do
 
     (cursorMode, selectedRanges, currentTagName) <- divClass "columns" $ do
       divClass "column is-two-thirds" $
-        versesWidget verseRanges tags selectedRanges
+        versesWidget verseRanges tagRanges selectedRanges
       divClass "column" $ do
         cursorMode_ <- divClass "columns" $
           toggleButtons CursorMode_Select [CursorMode_Select, CursorMode_Highlight] $ text . \case
@@ -358,7 +360,6 @@ appWidget referenceDyn = do
             inputEl <- inputElement $ def & initialAttributes .~ ("class"=:"input" <> "type"=:"text" <> "placeholder"=:"Tag")
             pure $ validateText <$> value inputEl
 
-        let tagRanges = tagsToRanges <$> tags -- TODO: We do this twice!
         let rangeSelected :: Event t (IntervalMap WordInterval (Set Text)) =
               attachWith IntervalMap.containing (current tagRanges) wordClicked
         rec
@@ -426,18 +427,16 @@ appWidget referenceDyn = do
 
     versesWidget
       :: Dynamic t (Maybe (IntervalMap WordInterval (Seq Text)))
-      -> Dynamic t (MonoidalMap Text (Set (ClosedInterval' (VerseReference, Int))))
+      -> Dynamic t (IntervalMap WordInterval (Set Text))
       -> Dynamic t (Maybe (IntervalMap WordInterval a))
       -> m ()
-    versesWidget verseRanges' tags' selected = mdo
-      domSegments' <- maybeDyn $ (liftA2 . liftA2) (,) verseRanges' (Just <$> tags')
+    versesWidget verseRanges' tagRanges selected = mdo
+      domSegments' <- maybeDyn verseRanges'
 
       dyn_ $ ffor domSegments' $ \case
         Nothing -> text "Loading..."
-        Just versesTags -> divClass "passage" $ do
+        Just verseRanges -> divClass "passage" $ do
           let
-            (verseRanges, tags) = splitDynPure versesTags
-            tagRanges = tagsToRanges <$> tags
             wordMap = verseWordMap <$> verseRanges
             domSegments = Map.fromDistinctAscList . map (,()) . unAscending <$> liftA2 mkNonOverlappingDomSegments verseRanges tagRanges
           void $ listWithKey domSegments $ \k _ -> do
