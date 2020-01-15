@@ -38,6 +38,7 @@ library
     , safe-exceptions
     , snap-core
     , text
+    , time
     , witherable
   exposed-modules:
     Backend
