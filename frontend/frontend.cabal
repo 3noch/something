@@ -29,6 +29,7 @@ library
     , rhyolite-frontend
     , text
     , these
+    , time
   exposed-modules:
     Frontend
   other-modules:
