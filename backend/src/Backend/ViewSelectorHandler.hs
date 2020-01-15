@@ -2,6 +2,7 @@
 module Backend.ViewSelectorHandler where
 
 import Control.Arrow ((***))
+import Data.List (foldl1')
 import Data.Semigroup (First (..))
 import Database.Beam
 import Database.Beam.Backend (BeamSqlBackend)
@@ -107,7 +108,7 @@ guardTagsByIntervals
   => TaggedRangeT t
   -> f (Interval VerseReference) -> Q Pg.Postgres db s ()
 guardTagsByIntervals taggedRange intervals =
-  guard_ $ foldl' (||.) (val_ True) $ do
+  guard_ $ foldAny_ $ do
     interval <- toList intervals
     let intervalArray = fmap (Pg.array_ . map val_ . verseReferenceToList) interval
     pure (
@@ -129,8 +130,8 @@ withinInterval_ interval b = case interval of
 getTaggedRangeNotes :: Set (Text, ClosedInterval' (VerseReference, Int)) -> Transaction mode (MonoidalMap (Text, ClosedInterval' (VerseReference, Int)) (Seq Text))
 getTaggedRangeNotes tags = fmap (MMap.fromListWith (<>) . map (tuplesToKey *** Seq.singleton)) $
   runQuery $ runSelectReturningList $ select $ do
-    (tag, taggedRange, taggedRangeByWord) <- allTagsAndRelated
-    guardExactTagRangeMatches tags tag taggedRange taggedRangeByWord
+    tagTables@(tag, taggedRange, taggedRangeByWord) <- allTagsAndRelated
+    guardExactTagRangeMatches tags tagTables
     taggedRangeNote <- join_ (_dbTaggedRangeNote db) (\x -> _taggedrangenoteForRange x `references_` taggedRange)
     let
       k =
@@ -153,16 +154,22 @@ guardExactTagRangeMatches
      , HaskellLiteralForQExpr (Columnar f2 Int) ~ Int
      )
   => Set (Text, ClosedInterval' (VerseReference, Int))
-  -> TagT f1
-  -> TaggedRangeT f3
-  -> TaggedRangeByWordT f2
+  -> (TagT f1, TaggedRangeT f3, TaggedRangeByWordT f2)
   -> Q Pg.Postgres db s ()
-guardExactTagRangeMatches (tags :: Set (Text, ClosedInterval' (VerseReference, Int))) tag taggedRange taggedRangeByWord = do
+guardExactTagRangeMatches (tags :: Set (Text, ClosedInterval' (VerseReference, Int))) (tag, taggedRange, taggedRangeByWord) = do
   guard_ (_tagName tag `in_` map (val_ . fst) (toList tags))
-  guard_ $ foldl' (||.) (val_ True) $ do
+  guard_ $ foldAny_ $ do
     (_, ClosedInterval' (ref1, word1) (ref2, word2)) <- toList tags
     pure
       $   _taggedrangeStart taggedRange ==. val_ ref1
       &&. _taggedrangeEnd taggedRange ==. val_ ref2
       &&. _taggedrangebywordStart taggedRangeByWord ==. val_ word1
       &&. _taggedrangebywordEnd taggedRangeByWord ==. val_ word2
+
+foldAny_ :: Foldable t => t (QGenExpr context Pg.Postgres s Bool) -> QGenExpr context Pg.Postgres s Bool
+foldAny_ = foldlStrictWithZero (||.) (val_ False)
+
+foldlStrictWithZero :: Foldable t => (a -> a -> a) -> a -> t a -> a
+foldlStrictWithZero o zero xs
+  | null xs = zero
+  | otherwise = foldl1' o $ toList xs

@@ -29,7 +29,7 @@ requestHandler runTransaction =
                     Ext.insertOnConflict (_dbTag db) (insertExpressions [TagT { _tagId = default_, _tagName = val_ tag }])
                       (Ext.anyConflict @Pg.Postgres @TagT) (Ext.onConflictDoNothing @Pg.Postgres @TagT)
             [t] -> pure [t]
-            _ -> error "More than one tag with the same name!"
+            _ -> error $ "More than one tag with the same name " <> show tag
 
           [taggedRangeT] <- Ext.runInsertReturningList $
             insert (_dbTaggedRange db) (insertExpressions
@@ -53,34 +53,42 @@ requestHandler runTransaction =
 
         notify Notification_Tag (Present, occurrence)
 
-      PublicRequest_DeleteTag occurrence@(TagOccurrence tagName translationId (ClosedInterval' (startRef, startWord) (endRef, endWord))) -> do
+      PublicRequest_DeleteTag occurrence@(TagOccurrence tagName translationId interval) -> do
         runQuery $ do
-          tagIds <- runSelectReturningList $ select $ do
-            tag <- all_ (_dbTag db)
-            guard_ (_tagName tag ==. val_ tagName)
-            pure $ _tagId tag
-
           rangeIds <- runSelectReturningList $ select $ do
-            taggedRange <- all_ (_dbTaggedRange db)
-            guard_ (_taggedrangeStart taggedRange ==. val_ startRef &&. _taggedrangeEnd taggedRange ==. val_ endRef)
-            guard_ (_taggedrangeForTag taggedRange `in_` map (val_ . coerce) tagIds)
+            tagTables@(_, taggedRange, taggedRangeByWord) <- VSH.allTagsAndRelated
+            VSH.guardExactTagRangeMatches (Set.singleton (tagName, interval)) tagTables
+            guard_ (_taggedrangebywordForTranslation taggedRangeByWord ==. val_ translationId)
             pure $ _taggedrangeId taggedRange
-          pure ()
 
           runDelete $ delete (_dbTaggedRangeByWord db) $ \t ->
-                _taggedrangebywordForRange t `in_` map (val_ . coerce) rangeIds
-            &&. _taggedrangebywordForTranslation t ==. val_ translationId
-            &&. _taggedrangebywordStart t ==. val_ startWord
-            &&. _taggedrangebywordEnd t ==. val_ endWord
+            _taggedrangebywordForRange t `in_` map (val_ . coerce) rangeIds
+
+          -- Garbage collect old tag ranges that no longer have any "by-word" highlights
+          leftoverRangeByWords <- fmap listToMaybe $ runSelectReturningList $ select $ limit_ 1 $ do
+            t <- all_ (_dbTaggedRangeByWord db)
+            guard_ $ _taggedrangebywordForRange t `in_` map (val_ . coerce) rangeIds
+            pure $ _taggedrangebywordForTranslation t
+
+          case leftoverRangeByWords of
+            Nothing -> do
+              runDelete $ delete (_dbTaggedRangeNote db) $ \t ->
+                _taggedrangenoteForRange t `in_` map (val_ . coerce) rangeIds
+              runDelete $ delete (_dbTaggedRange db) $ \t ->
+                pk t `in_` map (val_ . coerce) rangeIds
+            _ -> pure ()
 
         notify Notification_Tag (Absent, occurrence)
 
       PublicRequest_SetNotes tag notes -> do
-        tagRangeIdAndNote' <- runQuery $ runSelectReturningOne $ select $ limit_ 1 $ do
-          (tagT, taggedRange, taggedRangeByWord) <- VSH.allTagsAndRelated
-          VSH.guardExactTagRangeMatches (Set.singleton tag) tagT taggedRange taggedRangeByWord
-          note <- leftJoin_ (all_ $ _dbTaggedRangeNote db) (\x -> _taggedrangenoteForRange x `references_` taggedRange)
-          pure (_taggedrangeId taggedRange, note)
+        tagRangeIdAndNote' <-
+          fmap (atMostOne $ error $ "Got more than one tag range for " <> show tag) $
+            runQuery $ runSelectReturningList $ select $ limit_ 2 $ do
+              tagTables@(_, taggedRange, _) <- VSH.allTagsAndRelated
+              VSH.guardExactTagRangeMatches (Set.singleton tag) tagTables
+              note <- leftJoin_ (all_ $ _dbTaggedRangeNote db) (\x -> _taggedrangenoteForRange x `references_` taggedRange)
+              pure (_taggedrangeId taggedRange, note)
+
         for_ tagRangeIdAndNote' $ \(tagRangeId, existingNote') -> do
           newNote <- fmap (fromMaybe (error "WAT") . listToMaybe) $ case existingNote' of
             Nothing -> runQuery $ Ext.runInsertReturningList $ insert (_dbTaggedRangeNote db) $ insertExpressions
@@ -98,3 +106,9 @@ requestHandler runTransaction =
 
     ApiRequest_Private _key r -> case r of
       PrivateRequest_NoOp -> return ()
+
+atMostOne :: Maybe a -> [a] -> Maybe a
+atMostOne defalt = \case
+  [] -> Nothing
+  [a] -> Just a
+  _ -> defalt
