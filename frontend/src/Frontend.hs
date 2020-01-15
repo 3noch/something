@@ -190,17 +190,12 @@ endpointsToInterval = \case
   (IntervalEndpoint a Closed _, IntervalEndpoint b Closed _) -> ClosedInterval a b
   (IntervalEndpoint a Open _, IntervalEndpoint b Open _) -> OpenInterval a b
 
-newtype Ascending a = Ascending { unAscending :: [a] } deriving (Eq, Functor, Monoid, Ord, Semigroup)
-
-filterAscending :: forall a. (a -> Bool) -> Ascending a -> Ascending a
-filterAscending = coerce (filter :: (a -> Bool) -> [a] -> [a])
-
 nonOverlapping
   :: forall k v. (Ord k)
   => IntervalMap (Interval k) v
-  -> Ascending (Interval k)
+  -> Seq (Interval k)
 nonOverlapping xs | null xs = mempty
-nonOverlapping xs = Ascending $ toList $ foldl'
+nonOverlapping xs = foldl'
   (\intervals (this, next) ->
     let
       open x = x{_intervalEndpoint_type = Open}
@@ -277,8 +272,8 @@ combineTagsAndVerses verses tagRanges = IntervalMap.unionWith merge_ (This <$> t
 mkNonOverlappingDomSegments
   :: IntervalMap WordInterval a
   -> IntervalMap WordInterval (Set Text)
-  -> Ascending WordInterval
-mkNonOverlappingDomSegments verseRanges tagRanges = filterAscending f $ nonOverlapping $ combineTagsAndVerses verseRanges tagRanges
+  -> Seq WordInterval
+mkNonOverlappingDomSegments verseRanges tagRanges = Seq.filter f $ nonOverlapping $ combineTagsAndVerses verseRanges tagRanges
   where
     -- We can drop any interval that ends with an open endpoint on a 0th word. That interval
     -- corresponds to the spans between verses and those will never contain any text.
@@ -447,15 +442,15 @@ appWidget referenceDyn = do
       -> Dynamic t (IntervalMap WordInterval (Set Text))
       -> Dynamic t (Maybe (IntervalMap WordInterval a))
       -> m ()
-    versesWidget verseRanges' tagRanges selected = mdo
-      domSegments' <- maybeDyn verseRanges'
+    versesWidget verseRanges'' tagRanges selected = mdo
+      verseRanges' <- maybeDyn verseRanges''
 
-      dyn_ $ ffor domSegments' $ \case
+      dyn_ $ ffor verseRanges' $ \case
         Nothing -> text "Loading..."
         Just verseRanges -> divClass "passage" $ do
           let
             wordMap = verseWordMap <$> verseRanges
-            domSegments = Map.fromDistinctAscList . map (,()) . unAscending <$> liftA2 mkNonOverlappingDomSegments verseRanges tagRanges
+            domSegments = Map.fromList . map (,()) . toList <$> liftA2 mkNonOverlappingDomSegments verseRanges tagRanges
           void $ listWithKey domSegments $ \k _ -> do
             let startingEndpoint = fst (intervalToEndpoints k)
             case startingEndpoint of
