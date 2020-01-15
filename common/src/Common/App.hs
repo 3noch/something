@@ -53,7 +53,7 @@ deriveJSON Json.defaultOptions 'TagOccurrence
 data PublicRequest a where
   PublicRequest_AddTag :: !TagOccurrence -> PublicRequest ()
   PublicRequest_DeleteTag :: !TagOccurrence -> PublicRequest ()
-  PublicRequest_SetNotes :: !(Text, ClosedInterval' (VerseReference, Int)) -> Text -> PublicRequest ()
+  PublicRequest_SetNotes :: !(Text, ClosedInterval' (VerseReference, Int)) -> Text -> UTCTime -> PublicRequest ()
 deriving instance Show a => Show (PublicRequest a)
 fmap concat $ sequence
   [ deriveJSONGADT ''PublicRequest
@@ -214,7 +214,7 @@ rederiveTags verseRanges tags = flip MMap.mapMaybeWithKey tags $ \translationId 
 data View a = View
   { _view_translations :: !(Option (a, MonoidalMap TranslationId (First Translation)))
   , _view_verseRanges :: !(MonoidalMap TranslationId (MonoidalMap (Interval VerseReference) a))
-  , _view_tagNotes :: !(MonoidalMap (Text, ClosedInterval' (VerseReference, Int)) (a, First (Seq Text)))
+  , _view_tagNotes :: !(MonoidalMap (Text, ClosedInterval' (VerseReference, Int)) (a, First (Text, UTCTime)))
   , _view_verses :: !(MonoidalMap TranslationId (MonoidalMap VerseReference (Seq a, First Text)))
   , _view_tags :: !(MonoidalMap TranslationId (MonoidalMap Text (MonoidalMap (ClosedInterval' (VerseReference, Int)) (First Presence, Seq a))))
   }

@@ -23,6 +23,7 @@ import Data.Sequence (Seq)
 import qualified Data.Sequence as Seq
 import qualified Data.Set as Set
 import qualified Data.Text as T
+import Data.Time (getCurrentTime)
 import Data.These (These (This, That, These))
 import Control.Monad.Fix (MonadFix)
 import Obelisk.Configs (HasConfigs)
@@ -302,7 +303,10 @@ validateText x = case T.strip x of
      | otherwise -> Just x'
 
 appWidget
-  :: forall m js t. (HasApp t m, DomBuilder t m, PostBuild t m, MonadHold t m, MonadFix m, Prerender js t m)
+  :: forall m js t
+   . ( HasApp t m, DomBuilder t m, PostBuild t m, MonadHold t m, MonadFix m, Prerender js t m
+     , PerformEvent t m, MonadIO (Performable m)
+     )
   => Dynamic t (Canon, Maybe (Int, Maybe Int))
   -> m ()
 appWidget referenceDyn = do
@@ -379,22 +383,28 @@ appWidget referenceDyn = do
                       public $ PublicRequest_DeleteTag $ TagOccurrence tagName defaultTranslation $ ClosedInterval' start end
 
                     let uniqTagRange = (tagName, ClosedInterval' start end)
-                    notesDyn <- (fmap.fmap.fmap) (T.strip . T.unlines . toList) $ watchTagNotes $ constDyn uniqTagRange
+                    notesDyn <- watchTagNotes $ constDyn uniqTagRange
                     rec
                       let
-                        serverIsBetter txtBox server = T.length txtBox < T.length server -- TODO: Use timestamps instead!
                         newValueFromServer
-                          = mapMaybe (\(txtBox, serverValue) -> if serverIsBetter txtBox serverValue then Just serverValue else Nothing)
-                          $ attach (current notesText)
+                          = mapMaybe (\((_, localTime), (serverText, serverTime)) ->
+                                        if Just serverTime > localTime then Just serverText else Nothing)
+                          $ attach (current notesTextWithTime)
                           $ mapMaybe id (updated notesDyn)
                       notesText <- holdUniqDyn <=< fmap value $ textAreaElement $ def
                         & initialAttributes .~ ("class"=:"textarea" <> "type"=:"text" <> "placeholder"=:"Notes")
                         & textAreaElementConfig_initialValue .~ ""
                         & textAreaElementConfig_setValue .~ newValueFromServer
 
-                    notesTextDebounced <- switchDyn <$> prerender (pure never) (debounce 2 (updated notesText))
-                    void $ requestingIdentity $ ffor notesTextDebounced $ \content ->
-                      public $ PublicRequest_SetNotes uniqTagRange (T.strip content)
+                      notesText0 <- sample (current notesText) -- DANGER
+                      notesTextWithTimeUpdated <- performEvent $ ffor (updated notesText) $ \txt -> do
+                        t <- liftIO getCurrentTime
+                        pure (txt, Just t)
+                      notesTextWithTime <- holdDyn (notesText0, Nothing) notesTextWithTimeUpdated
+
+                    notesTextDebounced <- switchDyn <$> prerender (pure never) (debounce 1 notesTextWithTimeUpdated)
+                    void $ requestingIdentity $ ffor notesTextDebounced $ \(content, Just timestamp) -> -- TODO: Partial match
+                      public $ PublicRequest_SetNotes uniqTagRange (T.strip content) timestamp
 
         pure (cursorMode_, selectedRanges_, currentTagName_)
 
@@ -549,7 +559,7 @@ watchVerses rng = do
 watchTagNotes
   :: (HasApp t m, MonadHold t m, MonadFix m)
   => Dynamic t (Text, ClosedInterval' (VerseReference, Int))
-  -> m (Dynamic t (Maybe (Seq Text)))
+  -> m (Dynamic t (Maybe (Text, UTCTime)))
 watchTagNotes kDyn = do
   resultDyn <- watchViewSelector $ ffor kDyn $ \k -> mempty
     { _viewSelector_tagNotes = MMap.singleton k 1 }

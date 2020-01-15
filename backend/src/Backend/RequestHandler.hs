@@ -4,6 +4,7 @@ import Database.Beam
 import qualified Database.Beam.Postgres as Pg
 import qualified Database.Beam.Backend.SQL.BeamExtensions as Ext
 import qualified Data.Set as Set
+import qualified Data.Time as Time
 import Rhyolite.Api (ApiRequest (..))
 import Rhyolite.Backend.App (RequestHandler (..))
 
@@ -80,7 +81,8 @@ requestHandler runTransaction =
 
         notify Notification_Tag (Absent, occurrence)
 
-      PublicRequest_SetNotes tag notes -> do
+      PublicRequest_SetNotes tag notes utc -> do
+        let asLocalTime = Time.utcToLocalTime Time.utc utc
         tagRangeIdAndNote' <-
           fmap (atMostOne $ error $ "Got more than one tag range for " <> show tag) $
             runQuery $ runSelectReturningList $ select $ limit_ 2 $ do
@@ -96,11 +98,11 @@ requestHandler runTransaction =
                   { _taggedrangenoteId = default_
                   , _taggedrangenoteForRange = val_ (TaggedRangeId tagRangeId)
                   , _taggedrangenoteContent = val_ notes
-                  , _taggedrangenoteUpdated = Pg.now_
+                  , _taggedrangenoteUpdated = val_ asLocalTime
                   }
               ]
             Just existing -> ([existing] <$) $ runQuery $ runUpdate $ update (_dbTaggedRangeNote db)
-              (\x -> mconcat [ _taggedrangenoteContent x <-. val_ notes, _taggedrangenoteUpdated x <-. Pg.now_ ])
+              (\x -> mconcat [ _taggedrangenoteContent x <-. val_ notes, _taggedrangenoteUpdated x <-. val_ asLocalTime ])
               (\x -> pk x ==. val_ (pk existing))
           notify Notification_SetNotes (tag, pk newNote)
 

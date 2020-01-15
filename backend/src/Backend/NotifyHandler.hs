@@ -1,13 +1,13 @@
 module Backend.NotifyHandler where
 
 import Data.Dependent.Sum (DSum ((:=>)))
-import Database.Beam
 import qualified Data.Map.Monoidal as MMap
+import Database.Beam
 import Rhyolite.Backend.Listen (DbNotification (..))
-import qualified Data.Sequence as Seq
 
 import Backend.Transaction (Transaction, runQuery)
 import Backend.Schema
+import qualified Backend.ViewSelectorHandler as VSH
 import Common.App (TagOccurrence (..), View (..), ViewSelector (..), rederiveTags)
 import Common.Prelude
 import Common.Schema
@@ -29,5 +29,7 @@ notifyHandler runTransaction msg vs = case _dbNotification_message msg of
       pure taggedRangeNote
 
     pure $ case MMap.lookup tag (_viewSelector_tagNotes vs) of
-      Nothing -> mempty
-      Just a -> mempty { _view_tagNotes = MMap.singleton tag (a, First $ Seq.fromList $ map _taggedrangenoteContent notes ) }
+      Just a | not (null notes) -> mempty
+        { _view_tagNotes = MMap.singleton tag (a, First $ VSH.notesEntityToView notes)
+        }
+      _ -> mempty

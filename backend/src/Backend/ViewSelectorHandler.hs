@@ -4,6 +4,8 @@ module Backend.ViewSelectorHandler where
 import Control.Arrow ((***))
 import Data.List (foldl1')
 import Data.Semigroup (First (..))
+import qualified Data.Text as T
+import qualified Data.Time as Time
 import Database.Beam
 import Database.Beam.Backend (BeamSqlBackend)
 
@@ -45,7 +47,7 @@ viewSelectorHandler runTransaction vs = if vs == mempty then pure mempty else ru
   let
     tagNotes = flip MMap.mapMaybeWithKey tagNotes' $ \k v -> do
       a <- MMap.lookup k $ _viewSelector_tagNotes vs
-      Just (a, First v)
+      Just (a, First $ notesEntityToView $ toList v)
 
   pure $ View
     { _view_translations = translations
@@ -60,6 +62,12 @@ viewSelectorHandler runTransaction vs = if vs == mempty then pure mempty else ru
         $   fold
         >>> (\(a, map_) -> MMap.fromSet (const (First Present, Seq.singleton a)) <$> map_)
     }
+
+notesEntityToView :: [TaggedRangeNote] -> (Text, UTCTime)
+notesEntityToView notes =
+  ( T.strip $ T.unlines $ map _taggedrangenoteContent notes
+  , Time.localTimeToUTC Time.utc $ maximum $ map _taggedrangenoteUpdated notes
+  )
 
 getVersesInInterval :: TranslationId -> Interval VerseReference -> Transaction mode (MonoidalMap VerseReference Text)
 getVersesInInterval translationId interval = fmap (MMap.fromDistinctAscList . map (\v -> (verseToVerseReference v, _verseText v))) $
@@ -127,7 +135,9 @@ withinInterval_ interval b = case interval of
   OpenInterval a c -> a <. b &&. b <. c
   IntervalOC a c -> a <. b &&. b <=. c
 
-getTaggedRangeNotes :: Set (Text, ClosedInterval' (VerseReference, Int)) -> Transaction mode (MonoidalMap (Text, ClosedInterval' (VerseReference, Int)) (Seq Text))
+getTaggedRangeNotes
+  :: Set (Text, ClosedInterval' (VerseReference, Int))
+  -> Transaction mode (MonoidalMap (Text, ClosedInterval' (VerseReference, Int)) (Seq TaggedRangeNote))
 getTaggedRangeNotes tags = fmap (MMap.fromListWith (<>) . map (tuplesToKey *** Seq.singleton)) $
   runQuery $ runSelectReturningList $ select $ do
     tagTables@(tag, taggedRange, taggedRangeByWord) <- allTagsAndRelated
@@ -140,7 +150,7 @@ getTaggedRangeNotes tags = fmap (MMap.fromListWith (<>) . map (tuplesToKey *** S
           , _taggedrangeEnd taggedRange, _taggedrangebywordEnd taggedRangeByWord
           )
         )
-    pure (k, _taggedrangenoteContent taggedRangeNote)
+    pure (k, taggedRangeNote)
   where
     tuplesToKey (name, (a, b, c, d)) = (name, ClosedInterval' (a, b) (c, d))
 

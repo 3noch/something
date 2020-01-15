@@ -2,7 +2,9 @@
 
 module Frontend.Selection where
 
+import Control.Exception (SomeException)
 import Control.Lens.Operators ((^.))
+import Control.Monad.Catch (catch)
 import Data.Text (Text)
 import GHCJS.DOM.EventTargetClosures (unsafeEventName)
 import qualified GHCJS.DOM as Dom
@@ -20,8 +22,7 @@ import Reflex.Dom.Core (
 #   endif
   )
 
-import Control.Exception (SomeException)
-import Control.Monad.Catch (catch)
+
 
 selectionStart :: (Prerender js t m, Applicative m) => m (Event t (Text, Int, Text, Int))
 selectionStart = fmap switchDyn $ prerender (pure never) $ do

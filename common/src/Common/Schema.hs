@@ -10,7 +10,6 @@ import Database.Beam (Beamable, Columnar, PrimaryKey, Table (primaryKey))
 import Database.Beam.Backend.SQL.Types (SqlSerial)
 import Data.Time (LocalTime)
 import Common.Prelude
-
 -------------------------------------------------------------------------------
 data TranslationT f = Translation
  { _translationId :: Columnar f Int
@@ -155,11 +154,13 @@ data TaggedRangeNoteT f = TaggedRangeNoteT
   { _taggedrangenoteId :: Columnar f (SqlSerial Int)
   , _taggedrangenoteForRange :: PrimaryKey TaggedRangeT f
   , _taggedrangenoteContent :: Columnar f Text
-  , _taggedrangenoteUpdated :: Columnar f LocalTime
+  , _taggedrangenoteUpdated :: Columnar f LocalTime -- TODO: Use UTCTime
   } deriving (Generic, Beamable)
 instance Table TaggedRangeNoteT where
   newtype PrimaryKey TaggedRangeNoteT f = TaggedRangeNoteId (Columnar f (SqlSerial Int)) deriving stock Generic deriving anyclass Beamable
   primaryKey = TaggedRangeNoteId <$> _taggedrangenoteId
+
+type TaggedRangeNote = TaggedRangeNoteT Identity
 
 type TaggedRangeNoteId = PrimaryKey TaggedRangeNoteT Identity
 deriving instance Eq TaggedRangeNoteId
