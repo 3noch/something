@@ -6,6 +6,7 @@ import Control.Exception (SomeException)
 import Control.Lens.Operators ((^.))
 import Control.Monad.Catch (catch)
 import Data.Text (Text)
+import qualified Data.Text as T
 import GHCJS.DOM.EventTargetClosures (unsafeEventName)
 import qualified GHCJS.DOM as Dom
 import qualified GHCJS.DOM.EventM as EventM
@@ -21,8 +22,6 @@ import Reflex.Dom.Core (
       delay
 #   endif
   )
-
-
 
 selectionStart :: (Prerender js t m, Applicative m) => m (Event t (Text, Int, Text, Int))
 selectionStart = fmap switchDyn $ prerender (pure never) $ do
@@ -52,7 +51,15 @@ selectionStart = fmap switchDyn $ prerender (pure never) $ do
       Nothing -> pure Nothing
       Just node -> (do
           parentNode <- Node.getParentNodeUnchecked node
-          Dom.fromJSVal @Text =<< Node.unNode parentNode ^. js (s_ "dataset") . js (s_ "start")
+          -- NOTE: This roundabout way of getting to 'Text' fixes a weird
+          -- bug that only appears in GHCJS builds. Without this, an 'undefined'
+          -- would somehow sneak past masquerading as 'Text' only to blow up
+          -- when we use something like 'Data.Text.splitOn' later.
+          x' <- Dom.fromJSVal @String =<< Node.unNode parentNode ^. js (s_ "dataset") . js (s_ "start")
+          pure $ case x' of
+            Nothing -> Nothing
+            Just "" -> Nothing -- Does forcing the 'String' thunk here fix it the issue or is it just by using 'String' instead of 'Text'?
+            Just x -> Just $ T.pack x
         ) `catch` \(_ :: SomeException) -> pure Nothing
 
     s_ :: String -> String = id
