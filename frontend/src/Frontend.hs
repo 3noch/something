@@ -378,32 +378,31 @@ appWidget referenceDyn = do
                     (e, ()) <- elAttr' "button" ("type"=:"button" <> "class"=:"button is-danger") (text "Delete")
                     let ClosedInterval start end = tagRange -- TODO: Partial match
                     let deleteClicked = domEvent Click e
-                    tellEvent deleteClicked
-                    void $ requestingIdentity $ ffor deleteClicked $ \() ->
+                    deleteRegistered <- requestingIdentity $ ffor deleteClicked $ \() ->
                       public $ PublicRequest_DeleteTag $ TagOccurrence tagName defaultTranslation $ ClosedInterval' start end
+                    tellEvent deleteRegistered
 
                     let uniqTagRange = (tagName, ClosedInterval' start end)
                     notesDyn <- watchTagNotes $ constDyn uniqTagRange
+                    notes0 <- sample (current notesDyn)
                     rec
                       let
                         newValueFromServer
-                          = mapMaybe (\((_, localTime), (serverText, serverTime)) ->
-                                        if Just serverTime > localTime then Just serverText else Nothing)
+                          = mapMaybe (\(localState, (serverText, serverTime)) ->
+                                        if Just serverTime > (snd <$> localState) then Just serverText else Nothing)
                           $ attach (current notesTextWithTime)
                           $ mapMaybe id (updated notesDyn)
                       notesText <- holdUniqDyn <=< fmap value $ textAreaElement $ def
                         & initialAttributes .~ ("class"=:"textarea" <> "type"=:"text" <> "placeholder"=:"Notes")
-                        & textAreaElementConfig_initialValue .~ ""
+                        & textAreaElementConfig_initialValue .~ maybe "" fst notes0
                         & textAreaElementConfig_setValue .~ newValueFromServer
 
-                      notesText0 <- sample (current notesText) -- DANGER
-                      notesTextWithTimeUpdated <- performEvent $ ffor (updated notesText) $ \txt -> do
-                        t <- liftIO getCurrentTime
-                        pure (txt, Just t)
-                      notesTextWithTime <- holdDyn (notesText0, Nothing) notesTextWithTimeUpdated
+                      notesTextWithTimeUpdated <- performEvent $ ffor (updated notesText) $ \txt ->
+                        (txt,) <$> liftIO getCurrentTime
+                      notesTextWithTime <- holdDyn notes0 $ Just <$> notesTextWithTimeUpdated
 
                     notesTextDebounced <- switchDyn <$> prerender (pure never) (debounce 1 notesTextWithTimeUpdated)
-                    void $ requestingIdentity $ ffor notesTextDebounced $ \(content, Just timestamp) -> -- TODO: Partial match
+                    void $ requestingIdentity $ ffor notesTextDebounced $ \(content, timestamp) ->
                       public $ PublicRequest_SetNotes uniqTagRange (T.strip content) timestamp
 
         pure (cursorMode_, selectedRanges_, currentTagName_)
