@@ -1,0 +1,87 @@
+name: backend
+version: 0.1
+cabal-version: >= 1.8
+build-type: Simple
+
+library
+  hs-source-dirs: src
+  if impl(ghcjs)
+    buildable: False
+  build-depends:
+      base
+    , aeson
+    , aeson-gadt-th
+    , attoparsec
+    , beam-core
+    , beam-migrate
+    , beam-postgres
+    , bytestring
+    , common
+    , constraints-extras
+    , containers
+    , exceptions
+    , dependent-sum
+    , dependent-sum-template
+    , gargoyle-postgresql-connect
+    , IntervalMap
+    , frontend
+    , lens
+    , monoidal-containers
+    , mtl
+    , obelisk-backend
+    , obelisk-route
+    , postgresql-simple
+    , reflex
+    , resource-pool
+    , rhyolite-common
+    , rhyolite-backend
+    , safe-exceptions
+    , snap-core
+    , text
+    , time
+    , witherable
+  exposed-modules:
+    Backend
+  other-modules:
+    Backend.NotifyHandler
+    Backend.RequestHandler
+    Backend.Schema
+    Backend.Transaction
+    Backend.ViewSelectorHandler
+  default-extensions:
+    BangPatterns
+    ConstraintKinds
+    DataKinds
+    DeriveFoldable
+    DeriveGeneric
+    DeriveTraversable
+    DerivingStrategies
+    EmptyCase
+    EmptyDataDecls
+    GADTs
+    GeneralizedNewtypeDeriving
+    KindSignatures
+    LambdaCase
+    MultiParamTypeClasses
+    OverloadedStrings
+    PolyKinds
+    RankNTypes
+    ScopedTypeVariables
+    StandaloneDeriving
+    TupleSections
+    TypeApplications
+    TypeFamilies
+  ghc-options: -Wall
+
+executable backend
+  main-is: main.hs
+  hs-source-dirs: src-bin
+  if impl(ghcjs)
+    buildable: False
+  build-depends:
+      base
+    , backend
+    , common
+    , frontend
+    , obelisk-backend
+  ghc-options: -threaded

@@ -1,0 +1,59 @@
+name: common
+version: 0.1
+cabal-version: >= 1.2
+build-type: Simple
+
+library
+  hs-source-dirs: src
+  build-depends:
+      aeson
+    , aeson-gadt-th
+    , attoparsec
+    , base
+    , beam-core
+    , containers
+    , constraints-extras
+    , dependent-sum-template
+    , IntervalMap
+    , lens
+    , monoidal-containers
+    , mtl
+    , obelisk-route
+    , rhyolite-common
+    , reflex
+    , semialign
+    , text
+    , time
+    , these
+    , universe
+    , witherable
+  default-extensions:
+    BangPatterns
+    ConstraintKinds
+    DataKinds
+    DeriveFoldable
+    DeriveGeneric
+    DeriveTraversable
+    DerivingStrategies
+    EmptyCase
+    EmptyDataDecls
+    GADTs
+    GeneralizedNewtypeDeriving
+    KindSignatures
+    LambdaCase
+    MultiParamTypeClasses
+    OverloadedStrings
+    PolyKinds
+    RankNTypes
+    ScopedTypeVariables
+    StandaloneDeriving
+    TupleSections
+    TypeApplications
+    TypeFamilies
+  exposed-modules:
+    Common.App
+    Common.Prelude
+    Common.Route
+    Common.Schema
+    Data.Attoparsec.Text.BibleReference
+    Data.Bible
