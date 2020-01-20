@@ -58,7 +58,8 @@ headSection :: DomBuilder t m => m ()
 headSection = do
   elAttr "meta" ("charset"=:"utf-8") blank
   elAttr "meta" ("name"=:"viewport" <> "content"=:"width=device-width, initial-scale=1") blank
-  elAttr "link" ("rel"=:"stylesheet" <> "type"=:"text/css" <> "href"=:static @"css/bulma.css") blank
+  elAttr "link" ("rel"=:"stylesheet" <> "type"=:"text/css" <> "href"=:static @"css/bulma.min.css") blank
+  elAttr "link" ("rel"=:"stylesheet" <> "type"=:"text/css" <> "href"=:static @"css/style.css") blank
   el "title" $ text "Something"
   elAttr "script" ("defer"=:"defer" <> "src"=:"https://use.fontawesome.com/releases/v5.3.1/js/all.js") blank
 
@@ -85,10 +86,8 @@ skeleton
   => m a -> m a
 skeleton body = do
   navBar
-  a <- elClass "section" "section" body
-  footer
+  a <- elClass "section" "section main-section" body
   pure a
-
 
 navBar
   :: (DomBuilder t m, MonadHold t m, PostBuild t m, MonadFix m, SetRoute t (R FrontendRoute) m)
@@ -141,15 +140,6 @@ navBar =
             elClass "a" "button is-primary" $
               el "strong" $ text "Sign up"
             elClass "a" "button is-light" $ text "Log in"
-
-footer :: DomBuilder t m => m ()
-footer =
-  elClass "footer" "footer" $
-    divClass "content has-text-centered" $
-      el "p" $ do
-        el "strong" (text "Tree of Life") *> text " by Roy Almasy and Elliot Cameron. The source code is licensed "
-        elAttr "a" ("href"=:"http://opensource.org/licenses/mit-license.php") (text "MIT")
-        text ". The website content is licensed " *> elAttr "a" ("href"=:"http://creativecommons.org/licenses/by-nc-sa/4.0/") (text "CC BY NC SA 4.0")
 
 type HasApp t m =
   ( MonadQuery t (ViewSelector SelectedCount) m
@@ -345,8 +335,8 @@ appWidget referenceDyn = do
           wordClickedRaw
 
     (cursorMode, selectedRanges, currentTagName) <- divClass "columns" $ do
-      divClass "column is-two-thirds" $
-        versesWidget verseRanges tagRanges selectedRanges
+      divClass "column is-two-thirds passage-pane" $
+        divClass "passage" $ versesWidget verseRanges tagRanges selectedRanges
       divClass "column" $ do
         cursorMode_ :: Dynamic t CursorMode <- divClass "tabs is-toggle is-fullwidth is-small" $ el "ul" $
           toggleTabList CursorMode_Select [CursorMode_Select, CursorMode_Highlight] $ text . \case
@@ -456,7 +446,7 @@ appWidget referenceDyn = do
 
       dyn_ $ ffor verseRanges' $ \case
         Nothing -> text "Loading..."
-        Just verseRanges -> divClass "passage" $ do
+        Just verseRanges -> do
           let
             wordMap = verseWordMap <$> verseRanges
             domSegments = Map.fromList . map (,()) . toList <$> liftA2 mkNonOverlappingDomSegments verseRanges tagRanges
