@@ -10,23 +10,35 @@
 , withHoogle ? false
 }:
 with obelisk;
-project ./. ({ hackGet, pkgs, ... }:
-  let
-    beamSrc = hackGet dep/beam;
-  in {
-  inherit withHoogle;
-  android.applicationId = "systems.obsidian.obelisk.examples.minimal";
-  android.displayName = "Obelisk Minimal Example";
-  ios.bundleIdentifier = "systems.obsidian.obelisk.examples.minimal";
-  ios.bundleName = "Obelisk Minimal Example";
+let
+  app = project ./. ({ hackGet, pkgs, ... }:
+    let
+      beamSrc = hackGet dep/beam;
+    in {
+    inherit withHoogle;
+    android.applicationId = "systems.obsidian.obelisk.examples.minimal";
+    android.displayName = "Obelisk Minimal Example";
+    ios.bundleIdentifier = "systems.obsidian.obelisk.examples.minimal";
+    ios.bundleName = "Obelisk Minimal Example";
 
-  packages = {
-    beam-core = beamSrc + /beam-core;
-    beam-postgres = beamSrc + /beam-postgres;
-    beam-migrate = beamSrc + /beam-migrate;
-  };
+    packages = {
+      beam-core = beamSrc + /beam-core;
+      beam-postgres = beamSrc + /beam-postgres;
+      beam-migrate = beamSrc + /beam-migrate;
+    };
 
-  overrides = self: super: {
-    beam-postgres = pkgs.haskell.lib.dontCheck super.beam-postgres;  # Requires PG to run tests
-  };
-} // projectOverrides)
+    overrides = self: super: {
+      beam-postgres = pkgs.haskell.lib.dontCheck super.beam-postgres;  # Requires PG to run tests
+    };
+  } // projectOverrides);
+in app // {
+  server = { hostName, adminEmail, routeHost, enableHttps, version }@args:
+    import (app.obelisk.nixpkgs.path + /nixos) {
+      system = "x86_64-linux";
+      configuration = {
+        imports = [
+          (serverModules.mkObeliskApp (args // { exe = app.linuxExe; }))
+        ];
+      };
+    };
+}
