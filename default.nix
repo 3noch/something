@@ -6,16 +6,12 @@
     # Uncomment and set this to `true` to indicate your acceptance:
     # config.android_sdk.accept_license = false;
   }
-, projectOverrides ? {}
-, withHoogle ? false
 }:
 with obelisk;
-let
-  app = project ./. ({ hackGet, pkgs, ... }:
-    let
-      beamSrc = hackGet dep/beam;
-    in {
-    inherit withHoogle;
+project ./. ({ hackGet, pkgs, ... }:
+  let
+    beamSrc = hackGet dep/beam;
+  in {
     android.applicationId = "systems.obsidian.obelisk.examples.minimal";
     android.displayName = "Obelisk Minimal Example";
     ios.bundleIdentifier = "systems.obsidian.obelisk.examples.minimal";
@@ -30,15 +26,6 @@ let
     overrides = self: super: {
       beam-postgres = pkgs.haskell.lib.dontCheck super.beam-postgres;  # Requires PG to run tests
     };
-  } // projectOverrides);
-in app // {
-  server = { hostName, adminEmail, routeHost, enableHttps, version }@args:
-    import (app.obelisk.nixpkgs.path + /nixos) {
-      system = "x86_64-linux";
-      configuration = {
-        imports = [
-          (serverModules.mkObeliskApp (args // { exe = app.linuxExe; }))
-        ];
-      };
-    };
-}
+  }
+)
+
