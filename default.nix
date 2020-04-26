@@ -15,10 +15,10 @@ project ./. ({ hackGet, pkgs, ... }:
     beamSrc = hackGet dep/beam;
   in {
   inherit withHoogle;
-  android.applicationId = "systems.obsidian.obelisk.examples.minimal";
-  android.displayName = "Obelisk Minimal Example";
-  ios.bundleIdentifier = "systems.obsidian.obelisk.examples.minimal";
-  ios.bundleName = "Obelisk Minimal Example";
+  android.applicationId = "ca.srid.obelisk-rhyolite.template";
+  android.displayName = "Obelisk+Rhyolite Example";
+  ios.bundleIdentifier = "ca.srid.obelisk-rhyolite.template";
+  ios.bundleName = "Obelisk+Rhyolite Example";
 
   packages = {
     beam-core = beamSrc + /beam-core;
