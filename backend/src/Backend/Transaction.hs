@@ -1,16 +1,16 @@
 module Backend.Transaction where
 
-import Control.Monad.Reader (ReaderT (..))
+import Common.Prelude
 import Control.Monad.Catch (MonadThrow)
+import Control.Monad.Reader (ReaderT (..))
 import Data.Pool (Pool, withResource)
 import Database.Beam.Postgres (Pg, runBeamPostgresDebug)
 import qualified Database.PostgreSQL.Simple as Pg
 import qualified Database.PostgreSQL.Simple.Transaction as Pg
-import Common.Prelude
 
 data Writing
 
-newtype Transaction mode a = Transaction { unTransaction :: ReaderT Pg.Connection IO a }
+newtype Transaction mode a = Transaction {unTransaction :: ReaderT Pg.Connection IO a}
   deriving (Functor, Applicative, Monad, MonadThrow)
 
 runTransaction :: MonadIO m => Pool Pg.Connection -> Transaction mode a -> m a

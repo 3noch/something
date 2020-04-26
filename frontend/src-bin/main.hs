@@ -1,7 +1,7 @@
 module Main where
 
-import Frontend (frontend)
 import Common.Route (fullRouteEncoder)
+import Frontend (frontend)
 import Obelisk.Frontend (runFrontend)
 import Obelisk.Route (checkEncoder)
 import Reflex.Dom (run)

@@ -1,5 +1,6 @@
 {-# LANGUAGE FlexibleInstances #-}
 {-# LANGUAGE LambdaCase #-}
+
 module Data.Bible where
 
 import Data.Functor.Identity (Identity)
@@ -11,17 +12,23 @@ import GHC.Generics (Generic)
 
 data Two = Two_1 | Two_2
   deriving (Bounded, Enum, Eq, Generic, Ord, Show, Read)
+
 instance Universe Two
+
 instance Universe.Finite Two
 
 data Three = Three_1 | Three_2 | Three_3
   deriving (Bounded, Enum, Eq, Generic, Ord, Show, Read)
+
 instance Universe Three
+
 instance Universe.Finite Three
 
 data Four = Four_1 | Four_2 | Four_3 | Four_4
   deriving (Bounded, Enum, Eq, Generic, Ord, Show, Read)
+
 instance Universe Four
+
 instance Universe.Finite Four
 
 -- Used as an index for 'BookIndex' to mean "ignore book indexes".
@@ -70,21 +77,35 @@ data OldTestament' f
   | Zechariah
   | Malachi
   deriving (Generic)
+
 deriving instance Eq (OldTestament' Ignore)
+
 deriving instance Eq (OldTestament' Identity)
+
 deriving instance Ord (OldTestament' Ignore)
+
 deriving instance Ord (OldTestament' Identity)
+
 deriving instance Show (OldTestament' Ignore)
+
 deriving instance Show (OldTestament' Identity)
+
 deriving instance Read (OldTestament' Ignore)
+
 deriving instance Read (OldTestament' Identity)
+
 instance Universe (OldTestament' Ignore) where universe = universeGeneric
+
 instance Universe.Finite (OldTestament' Ignore)
+
 instance Universe (OldTestament' Identity) -- Uses 'Enum' instance
+
 instance Universe.Finite (OldTestament' Identity)
+
 instance Bounded (OldTestament' f) where
   minBound = Genesis
   maxBound = Malachi
+
 instance Enum (OldTestament' Identity) where
   fromEnum x = case x of
     Genesis -> 0
@@ -232,21 +253,35 @@ data NewTestament' f
   | Jude
   | Revelation
   deriving (Generic)
+
 deriving instance Eq (NewTestament' Ignore)
+
 deriving instance Eq (NewTestament' Identity)
+
 deriving instance Ord (NewTestament' Ignore)
+
 deriving instance Ord (NewTestament' Identity)
+
 deriving instance Show (NewTestament' Ignore)
+
 deriving instance Show (NewTestament' Identity)
+
 deriving instance Read (NewTestament' Ignore)
+
 deriving instance Read (NewTestament' Identity)
+
 instance Universe (NewTestament' Ignore) where universe = universeGeneric
+
 instance Universe.Finite (NewTestament' Ignore)
+
 instance Universe (NewTestament' Identity) -- Uses 'Enum' instance
+
 instance Universe.Finite (NewTestament' Identity)
+
 instance Bounded (NewTestament' f) where
   minBound = Matthew
   maxBound = Revelation
+
 instance Enum (NewTestament' Identity) where
   fromEnum x = case x of
     Matthew -> 0
@@ -308,11 +343,11 @@ instance Enum (NewTestament' Identity) where
 
 type NewTestament = NewTestament' Identity
 
-newTestamentToString
-  :: (Two -> String -> String)
-  -> (Three -> String -> String)
-  -> NewTestament' Identity
-  -> String
+newTestamentToString ::
+  (Two -> String -> String) ->
+  (Three -> String -> String) ->
+  NewTestament' Identity ->
+  String
 newTestamentToString showTwo showThree = \case
   Matthew -> "Matthew"
   Mark -> "Mark"
@@ -340,19 +375,31 @@ data Canon' f
   = Canon_Old (OldTestament' f)
   | Canon_New (NewTestament' f)
   deriving (Generic)
+
 deriving instance Eq (Canon' Ignore)
+
 deriving instance Eq (Canon' Identity)
+
 deriving instance Ord (Canon' Ignore)
+
 deriving instance Ord (Canon' Identity)
+
 deriving instance Show (Canon' Ignore)
+
 deriving instance Show (Canon' Identity)
+
 instance Universe (Canon' Ignore) where universe = universeGeneric
+
 instance Universe.Finite (Canon' Ignore)
+
 instance Universe (Canon' Identity) -- Uses 'Enum' instance
+
 instance Universe.Finite (Canon' Identity)
+
 instance Bounded (Canon' f) where
   minBound = Canon_Old minBound
   maxBound = Canon_New maxBound
+
 instance Enum (Canon' Identity) where
   fromEnum x = case x of
     Canon_Old b -> fromEnum b
@@ -384,18 +431,31 @@ data Apocrypha' f
   | PsalmsOfSolomon
   | EpistleToTheLaodiceans
   deriving (Generic)
+
 deriving instance Eq (Apocrypha' Ignore)
+
 deriving instance Eq (Apocrypha' Identity)
+
 deriving instance Ord (Apocrypha' Ignore)
+
 deriving instance Ord (Apocrypha' Identity)
+
 deriving instance Show (Apocrypha' Ignore)
+
 deriving instance Show (Apocrypha' Identity)
+
 deriving instance Read (Apocrypha' Ignore)
+
 deriving instance Read (Apocrypha' Identity)
+
 instance Universe (Apocrypha' Ignore) where universe = universeGeneric
+
 instance Universe.Finite (Apocrypha' Ignore)
+
 instance Universe (Apocrypha' Identity) where universe = universeGeneric
+
 instance Universe.Finite (Apocrypha' Identity)
+
 instance Bounded (Apocrypha' f) where
   minBound = Tobit
   maxBound = EpistleToTheLaodiceans
