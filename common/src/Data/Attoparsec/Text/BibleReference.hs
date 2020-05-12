@@ -1,8 +1,6 @@
-{-# LANGUAGE DeriveGeneric #-}
 {-# LANGUAGE FlexibleInstances #-}
 {-# LANGUAGE LambdaCase #-}
 {-# LANGUAGE OverloadedStrings #-}
-{-# LANGUAGE StandaloneDeriving #-}
 {-# LANGUAGE TypeFamilies #-}
 module Data.Attoparsec.Text.BibleReference where
 
@@ -10,6 +8,7 @@ import Control.Applicative (liftA2, optional, (<|>))
 import Data.Attoparsec.Text (Parser, asciiCI, char, choice, decimal, skipWhile)
 import Data.Functor (($>))
 import Data.Functor.Identity (Identity)
+import qualified Data.List as List
 import Data.Text (Text)
 import Data.Universe (universe)
 
@@ -117,7 +116,11 @@ parseOldTestament = \case
   Malachi -> Malachi <$ bookAbbr ["Malachi","Mal","Ml"]
 
 parseOldTestamentAny :: Parser (OldTestament' Identity)
-parseOldTestamentAny = choice $ map parseOldTestament universe
+parseOldTestamentAny = choice $ map parseOldTestament otParseOrder
+  where
+    -- Isaiah starts with "I" which means the roman numeral indexing
+    -- will beat it to the parsing and match against I Samuel
+    otParseOrder = Isaiah : List.delete Isaiah universe
 
 parseNewTestament :: NewTestament' Ignore -> Parser (NewTestament' Identity)
 parseNewTestament = \case
