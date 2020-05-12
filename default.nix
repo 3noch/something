@@ -26,6 +26,8 @@ project ./. ({ hackGet, pkgs, ... }:
     overrides = self: super: {
       beam-postgres = pkgs.haskell.lib.dontCheck super.beam-postgres;  # Requires PG to run tests
     };
+
+    __withGhcide = true;
   }
 )
 
