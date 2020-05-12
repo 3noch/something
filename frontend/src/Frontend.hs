@@ -6,7 +6,7 @@
 
 module Frontend where
 
-import Control.Lens (Prism', ix, prism', re)
+import Control.Lens (Iso', Prism', iso, ix, prism', re)
 import Data.Colour.SRGB (RGB(..), toSRGB24)
 import Control.Monad.Trans.Random.Lazy (runRandT)
 import Data.Colour.Palette.RandomColor (randomColor)
@@ -15,7 +15,7 @@ import Data.Hashable (hash)
 import qualified Data.IntervalMap.Generic.Strict as IntervalMap
 import Data.IntervalMap.Generic.Strict (IntervalMap)
 import Data.IntervalMap.Interval (Interval (..))
-import Data.List (sort, foldl')
+import Data.List (foldl')
 import qualified Data.Map as Map
 import qualified Data.Map.Monoidal as MMap
 import Data.Semigroup (First (..))
@@ -86,8 +86,7 @@ skeleton
   => m a -> m a
 skeleton body = do
   navBar
-  a <- elClass "section" "section main-section" body
-  pure a
+  elClass "section" "section main-section" body
 
 navBar
   :: (DomBuilder t m, MonadHold t m, PostBuild t m, MonadFix m, SetRoute t (R FrontendRoute) m)
@@ -95,7 +94,7 @@ navBar
 navBar =
   elAttr "nav" ("class"=:"navbar" <> "role"=:"navigation" <> "aria-label"=:"main navigation") $ do
     divClass "navbar-brand" $
-      elAttr "a" ("class"=:"navbar-item" <> "href"=:"https://bulma.io") $ text "Tree of Life"
+      elAttr "a" ("class"=:"navbar-item" <> "href"=:"") $ text "Tree of Life"
         -- elAttr "img" ("src"=:"https://bulma.io/images/bulma-logo.png" <> "width"=:"112" <> "height"=:"28") blank
 
     (burgerEl, ()) <- elAttr' "a" ("role"=:"button" <> "class"=:"navbar-burger burger" <> "aria-label"=:"menu") $ do
@@ -151,7 +150,7 @@ type HasApp t m =
 defaultTranslation :: TranslationId
 defaultTranslation = TranslationId 1
 
-data IntervalEndpointType = Closed | Open deriving (Bounded, Enum, Eq, Generic, Ord, Show)
+data IntervalEndpointType = Open | Closed deriving (Bounded, Enum, Eq, Generic, Ord, Show)
 
 data IntervalEndpointPosition = Starting | Ending deriving (Bounded, Enum, Eq, Generic, Ord, Show)
 
@@ -162,10 +161,15 @@ data IntervalEndpoint a = IntervalEndpoint
   }
   deriving (Eq, Generic, Show)
 instance Ord a => Ord (IntervalEndpoint a) where
-  compare (IntervalEndpoint a' aType _) (IntervalEndpoint b' bType _) = case ((a', aType), (b', bType)) of
-    ((a, Closed), (b, Open)) | a == b -> LT
-    ((a, Open), (b, Closed)) | a == b -> GT
-    ((a, _), (b, _)) -> compare a b
+  compare (IntervalEndpoint a' aType aPos) (IntervalEndpoint b' bType bPos)
+    | a' < b' = LT
+    | a' > b' = GT
+    | otherwise = case (aPos, aType, bPos, bType) of
+      (Starting, Closed, Starting, Open) -> LT
+      (Starting, Open, Starting, Closed) -> GT
+      (Ending, Closed, Ending, Open) -> GT
+      (Ending, Open, Ending, Closed) -> LT
+      _ -> compare (aPos, aType) (bPos, bType)
 
 intervalToEndpoints :: Interval a -> (IntervalEndpoint a, IntervalEndpoint a)
 intervalToEndpoints = \case
@@ -181,6 +185,9 @@ endpointsToInterval = \case
   (IntervalEndpoint a Closed _, IntervalEndpoint b Closed _) -> ClosedInterval a b
   (IntervalEndpoint a Open _, IntervalEndpoint b Open _) -> OpenInterval a b
 
+endpointIso :: Iso' (Interval a) (IntervalEndpoint a, IntervalEndpoint a)
+endpointIso = iso intervalToEndpoints endpointsToInterval
+
 nonOverlapping
   :: forall k v. (Ord k)
   => IntervalMap (Interval k) v
@@ -195,14 +202,14 @@ nonOverlapping xs = foldl'
         (Starting, Starting) -> (this, open next)
         (Ending, Ending) -> (open this, next)
         (Ending, Starting) -> (open this, open next)
-    in intervals Seq.:|> endpointsToInterval interval
+    in intervals Seq.:|> interval ^. re endpointIso
   )
   mempty
   (zip endpoints (tail endpoints))
   where
-    endpoints :: [IntervalEndpoint k] = sort $ fold $ do
+    endpoints :: [IntervalEndpoint k] = Set.toAscList $ Set.fromList $ fold $ do
       interval <- IntervalMap.keys xs
-      let (left, right) = intervalToEndpoints interval
+      let (left, right) = interval ^. endpointIso
       pure [left, right]
 
 verseWords :: Text -> Seq Text
@@ -478,6 +485,8 @@ appWidget referenceDyn = do
             let
               styleDyn = ffor color $ \c' ->
                 "data-start" =: startingEndpoint ^. re wordStartingEndpointEncoding <>
+                "data-b" =: T.pack (show (snd (intervalToEndpoints k))) <>
+                "data-a" =: T.pack (show (fst (intervalToEndpoints k))) <>
                 maybe mempty (\(backColor, frontColor) -> "style" =: ("background-color:" <> backColor <> ";" <> "color:" <> frontColor <> ";")) c'
             text " "
             elDynAttr "span" styleDyn $ dynTextStrict wordsDyn
